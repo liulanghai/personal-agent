@@ -1,8 +1,8 @@
 import json
-import re
 from pathlib import Path
 from jsonschema import validate
 from .store import uid, now
+from .discovery import Discovery
 
 MAX_TEXT = 60000
 
@@ -13,6 +13,7 @@ def schema(name, description, properties, required):
 
 STR = {"type": "string", "minLength": 1}
 DEFINITIONS = [
+    schema("read_skill_resource", "Read a UTF-8 reference or template within a discovered skill; does not execute scripts.", {"skill_id": STR, "path": STR}, ["skill_id", "path"]),
     schema("list_files", "List up to 100 files in the workspace.", {}, []),
     schema("read_file", "Read a UTF-8 text file in workspace (up to 60KB).", {"path": STR}, ["path"]),
     schema("search_files", "Search UTF-8 files using a literal query.", {"query": STR}, ["query"]),
@@ -23,9 +24,10 @@ DEFINITIONS = [
 
 
 class Tools:
-    def __init__(self, workspace, skills, store):
+    def __init__(self, workspace, skills, store, home=None):
         self.workspace, self.skills_dir, self.store = Path(workspace).resolve(), Path(skills), store
         self.workspace.mkdir(parents=True, exist_ok=True)
+        self.discovery = Discovery(self.workspace, skills, home)
 
     def path(self, value):
         path = (self.workspace / value).resolve()
@@ -34,23 +36,18 @@ class Tools:
         return path
 
     def skills(self):
-        result = []
-        for path in sorted(self.skills_dir.glob("*/SKILL.md")):
-            text = path.read_text()
-            description = re.search(r"^description:\s*(.+)$", text, re.M)
-            result.append({"id": path.parent.name, "name": path.parent.name, "description": description.group(1) if description else path.parent.name})
-        return result
+        return self.discovery.skills()
 
     def skill(self, skill_id):
-        if skill_id not in [s["id"] for s in self.skills()]:
-            raise ValueError("Unknown skill")
-        return {"id": skill_id, "content": (self.skills_dir / skill_id / "SKILL.md").read_text()}
+        return self.discovery.skill(skill_id)
 
     def execute(self, name, args, run_id):
         definition = next((d for d in DEFINITIONS if d["function"]["name"] == name), None)
         if not definition:
             raise ValueError("Unknown tool")
         validate(args, definition["function"]["parameters"])
+        if name == "read_skill_resource":
+            return self.discovery.resource(args["skill_id"], args["path"])
         if name == "list_skills":
             return self.skills()
         if name == "read_skill":

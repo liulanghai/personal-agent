@@ -92,6 +92,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{rid}/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Context */
+        get: operations["run_context_api_v1_runs__rid__context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discovery */
+        get: operations["discovery_api_v1_discovery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{rid}": {
         parameters: {
             query?: never;
@@ -277,6 +311,17 @@ export interface components {
              */
             file: string;
         };
+        /** ContextManifest */
+        ContextManifest: {
+            /** Sections */
+            sections: {
+                [key: string]: unknown;
+            }[];
+            /** Total Characters */
+            total_characters: number;
+            /** Limit Characters */
+            limit_characters: number;
+        };
         /** Conversation */
         Conversation: {
             /** Id */
@@ -298,6 +343,17 @@ export interface components {
         Conversations: {
             /** Items */
             items: components["schemas"]["Conversation"][];
+        };
+        /** DiscoveryResult */
+        DiscoveryResult: {
+            /** Workspace Path */
+            workspace_path: string;
+            /** Instructions */
+            instructions: components["schemas"]["RuleSource"][];
+            /** Skills */
+            skills: components["schemas"]["Skill"][];
+            /** Warnings */
+            warnings: string[];
         };
         /** Files */
         Files: {
@@ -351,6 +407,15 @@ export interface components {
             /** Items */
             items: components["schemas"]["Message"][];
         };
+        /** RuleSource */
+        RuleSource: {
+            /** Scope */
+            scope: string;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+        };
         /** Run */
         Run: {
             /** Id */
@@ -386,6 +451,15 @@ export interface components {
             model: string;
             /** Has Api Key */
             has_api_key: boolean;
+            /** Timezone */
+            timezone: string;
+            /**
+             * Instruction Mode
+             * @enum {string}
+             */
+            instruction_mode: "auto" | "codex" | "claude";
+            /** Workspace Path */
+            workspace_path: string;
         };
         /** SettingsInput */
         SettingsInput: {
@@ -395,6 +469,10 @@ export interface components {
             model: string;
             /** Api Key */
             api_key?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Instruction Mode */
+            instruction_mode?: ("auto" | "codex" | "claude") | null;
         };
         /** Skill */
         Skill: {
@@ -404,6 +482,16 @@ export interface components {
             name: string;
             /** Description */
             description: string;
+            /** Scope */
+            scope: string;
+            /** Source */
+            source: string;
+            /** Path */
+            path: string;
+            /** Directory */
+            directory: string;
+            /** Unsupported Fields */
+            unsupported_fields: string[];
         };
         /** SkillContent */
         SkillContent: {
@@ -667,6 +755,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_context_api_v1_runs__rid__context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discovery_api_v1_discovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResult"];
                 };
             };
         };

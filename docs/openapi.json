@@ -280,6 +280,63 @@
         }
       }
     },
+    "/api/v1/runs/{rid}/context": {
+      "get": {
+        "summary": "Run Context",
+        "operationId": "run_context_api_v1_runs__rid__context_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContextManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/discovery": {
+      "get": {
+        "summary": "Discovery",
+        "operationId": "discovery_api_v1_discovery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/runs/{rid}": {
       "get": {
         "summary": "Run",
@@ -688,6 +745,33 @@
         ],
         "title": "Body_upload_api_v1_files_post"
       },
+      "ContextManifest": {
+        "properties": {
+          "sections": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Sections"
+          },
+          "total_characters": {
+            "type": "integer",
+            "title": "Total Characters"
+          },
+          "limit_characters": {
+            "type": "integer",
+            "title": "Limit Characters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sections",
+          "total_characters",
+          "limit_characters"
+        ],
+        "title": "ContextManifest"
+      },
       "Conversation": {
         "properties": {
           "id": {
@@ -739,6 +823,43 @@
           "items"
         ],
         "title": "Conversations"
+      },
+      "DiscoveryResult": {
+        "properties": {
+          "workspace_path": {
+            "type": "string",
+            "title": "Workspace Path"
+          },
+          "instructions": {
+            "items": {
+              "$ref": "#/components/schemas/RuleSource"
+            },
+            "type": "array",
+            "title": "Instructions"
+          },
+          "skills": {
+            "items": {
+              "$ref": "#/components/schemas/Skill"
+            },
+            "type": "array",
+            "title": "Skills"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "workspace_path",
+          "instructions",
+          "skills",
+          "warnings"
+        ],
+        "title": "DiscoveryResult"
       },
       "Files": {
         "properties": {
@@ -880,6 +1001,29 @@
         ],
         "title": "Messages"
       },
+      "RuleSource": {
+        "properties": {
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scope",
+          "path",
+          "sha256"
+        ],
+        "title": "RuleSource"
+      },
       "Run": {
         "properties": {
           "id": {
@@ -981,13 +1125,33 @@
           "has_api_key": {
             "type": "boolean",
             "title": "Has Api Key"
+          },
+          "timezone": {
+            "type": "string",
+            "title": "Timezone"
+          },
+          "instruction_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "codex",
+              "claude"
+            ],
+            "title": "Instruction Mode"
+          },
+          "workspace_path": {
+            "type": "string",
+            "title": "Workspace Path"
           }
         },
         "type": "object",
         "required": [
           "base_url",
           "model",
-          "has_api_key"
+          "has_api_key",
+          "timezone",
+          "instruction_mode",
+          "workspace_path"
         ],
         "title": "Settings"
       },
@@ -1014,6 +1178,34 @@
               }
             ],
             "title": "Api Key"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "instruction_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "codex",
+                  "claude"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instruction Mode"
           }
         },
         "type": "object",
@@ -1036,13 +1228,41 @@
           "description": {
             "type": "string",
             "title": "Description"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "directory": {
+            "type": "string",
+            "title": "Directory"
+          },
+          "unsupported_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unsupported Fields"
           }
         },
         "type": "object",
         "required": [
           "id",
           "name",
-          "description"
+          "description",
+          "scope",
+          "source",
+          "path",
+          "directory",
+          "unsupported_fields"
         ],
         "title": "Skill"
       },

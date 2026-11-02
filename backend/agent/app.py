@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, Optional
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +38,8 @@ class SettingsInput(BaseModel):
     base_url: str = Field(max_length=500)
     model: str = Field(max_length=200)
     api_key: Optional[str] = Field(default=None, max_length=4000)
+    timezone: Optional[str] = Field(default=None, max_length=100)
+    instruction_mode: Optional[Literal["auto", "codex", "claude"]] = None
 
 
 def create_app(data_dir=None):
@@ -45,12 +48,12 @@ def create_app(data_dir=None):
     os.chmod(data, 0o700)
     config_path = data / "settings.json"
     store = Store(data / "agent.sqlite")
-    tools = Tools(data / "workspace", ROOT / "skills", store)
+    tools = Tools(os.getenv("AGENT_WORKSPACE", data / "workspace"), ROOT / "skills", store)
 
     def settings():
         if config_path.exists():
-            return json.loads(config_path.read_text())
-        return {"base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"), "model": os.getenv("MODEL_NAME", ""), "api_key": os.getenv("MODEL_API_KEY", "")}
+            return {"timezone": "Asia/Shanghai", "instruction_mode": "auto", **json.loads(config_path.read_text())}
+        return {"timezone": "Asia/Shanghai", "instruction_mode": "auto", "base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"), "model": os.getenv("MODEL_NAME", ""), "api_key": os.getenv("MODEL_API_KEY", "")}
 
     runtime = Runtime(store, tools, settings)
 
@@ -106,7 +109,7 @@ def create_app(data_dir=None):
     @app.get("/api/v1/settings", response_model=api.Settings)
     async def get_settings():
         config = settings()
-        return {k: config[k] for k in ("base_url", "model")} | {"has_api_key": bool(config.get("api_key"))}
+        return {k: config[k] for k in ("base_url", "model", "timezone", "instruction_mode")} | {"has_api_key": bool(config.get("api_key")), "workspace_path": str(tools.workspace)}
 
     @app.put("/api/v1/settings", response_model=api.Settings)
     async def put_settings(body: SettingsInput):
@@ -117,6 +120,13 @@ def create_app(data_dir=None):
             raise HTTPException(422, "远程模型服务必须使用 HTTPS")
         previous = settings()
         value = body.model_dump()
+        for field in ("timezone", "instruction_mode"):
+            if value[field] is None:
+                value[field] = previous[field]
+        try:
+            ZoneInfo(value["timezone"])
+        except (ZoneInfoNotFoundError, ValueError):
+            raise HTTPException(422, "无效时区，请填写 Asia/Shanghai 等 IANA 时区")
         if body.api_key is None:
             if body.base_url.rstrip("/") != previous["base_url"].rstrip("/") and previous.get("api_key"):
                 raise HTTPException(422, "更换模型地址时请重新输入密钥，避免将旧密钥发送给新服务")
@@ -178,6 +188,20 @@ def create_app(data_dir=None):
     async def runs(conversation_id: Optional[str] = None):
         rows = store.rows("SELECT * FROM runs WHERE conversation_id=? ORDER BY created_at DESC LIMIT 100", (conversation_id,)) if conversation_id else store.rows("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100")
         return {"items": [public_run(row) for row in rows]}
+
+    @app.get("/api/v1/runs/{rid}/context", response_model=api.ContextManifest)
+    async def run_context(rid: str):
+        require("runs", rid)
+        event = store.one("SELECT data FROM events WHERE run_id=? AND type='context.built' ORDER BY sequence DESC LIMIT 1", (rid,))
+        if not event:
+            raise HTTPException(404, "此任务暂无上下文记录")
+        return json.loads(event["data"])
+
+    @app.get("/api/v1/discovery", response_model=api.DiscoveryResult)
+    async def discovery():
+        skills = tools.skills()
+        rules, warnings = tools.discovery.instructions(settings()["instruction_mode"])
+        return {"workspace_path": str(tools.workspace), "instructions": [{k: r[k] for k in ("scope", "path", "sha256")} for r in rules], "skills": skills, "warnings": warnings + tools.discovery.warnings}
 
     @app.get("/api/v1/runs/{rid}", response_model=api.Run)
     async def run(rid: str):

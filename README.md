@@ -58,6 +58,7 @@ npm run build
 - 契约：`docs/openapi.json`
 - TypeScript SDK：`sdk/src/index.ts`
 - 架构：`docs/architecture.md`
+- 上下文、规则与 Skill 目录：`docs/context.md`
 - 路线图：`docs/roadmap.md`
 
 ```sh

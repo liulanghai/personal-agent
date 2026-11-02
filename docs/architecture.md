@@ -21,6 +21,7 @@ HTTP 业务错误格式为 `{ "error": { "code": "...", "message": "..." } }`；
 GET `/runs/{id}/events` 使用 SSE。每个事件包含 `id`、全局递增 `sequence`、`run_id`、`type`、`data`、`created_at`。sequence 可有间隔，客户端不能假设连续。事件写入数据库后才推送。
 
 - `run.started`: 空对象
+- `context.built`: 模块清单、规则来源摘要、环境快照与预算（详见 context.md）
 - `message.delta`: delta
 - `tool_call.started`: tool_call_id, tool_name, arguments
 - `tool_call.completed`: tool_call_id, tool_name, status, result

@@ -32,7 +32,10 @@ def app(tmp_path, monkeypatch):
             delta = {"content":"已完成测试任务"}
         return httpx.Response(200, content="data: "+json.dumps({"choices":[{"delta":delta}]})+"\n\ndata: [DONE]\n\n")
     monkeypatch.setattr("agent.runtime.httpx.AsyncClient", lambda **kwargs: ORIGINAL_ASYNC_CLIENT(transport=httpx.MockTransport(provider), **kwargs))
-    return create_app(tmp_path)
+    app = create_app(tmp_path)
+    app.state.runtime.tools.discovery.home = tmp_path / "home"
+    app.state.runtime.tools.discovery.codex_home = tmp_path / "home/.codex"
+    return app
 
 
 @pytest.fixture
@@ -191,3 +194,19 @@ def test_missing_key_fails_without_fallback(client):
     result = wait(client, run["id"])
     assert result["status"] == "failed"
     assert "密钥" in result["error"]
+
+
+def test_context_settings_manifest_and_discovery(client):
+    current = client.get("/api/v1/settings").json()
+    assert current["timezone"] == "Asia/Shanghai"
+    assert current["instruction_mode"] == "auto"
+    body = {"base_url":current["base_url"], "model":current["model"], "timezone":"invalid-zone"}
+    assert client.put("/api/v1/settings", json=body).status_code == 422
+    body["timezone"] = "Asia/Tokyo"
+    assert client.put("/api/v1/settings", json=body).status_code == 200
+    assert client.get("/api/v1/discovery").json()["skills"]
+    _, run, _ = send(client)
+    assert wait(client, run["id"])["status"] == "completed"
+    manifest = client.get(f'/api/v1/runs/{run["id"]}/context').json()
+    assert manifest["sections"][0]["environment"]["timezone"] == "Asia/Tokyo"
+    assert "test-key" not in json.dumps(manifest)

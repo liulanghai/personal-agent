@@ -36,6 +36,7 @@ export class AgentClient {
     send: (cid: string, input: MessageInput, key = crypto.randomUUID()) => this.request<Run>(`/conversations/${cid}/messages`, {method:'POST', headers:{'Idempotency-Key':key},body:JSON.stringify(input)})
   };
   runs = {
+    context: (id: string) => this.request<components['schemas']['ContextManifest']>(`/runs/${id}/context`),
     list: (cid?: string) => this.request<{items: Run[]}>(`/runs${cid ? '?conversation_id='+encodeURIComponent(cid) : ''}`),
     get: (id: string) => this.request<Run>(`/runs/${id}`),
     cancel: (id: string) => this.request<Run>(`/runs/${id}/cancel`, {method:'POST'}),
@@ -45,6 +46,7 @@ export class AgentClient {
     list: () => this.request<{items: Skill[]}>('/skills'),
     get: (id: string) => this.request<{id: string; content: string}>(`/skills/${id}`)
   };
+  discovery = () => this.request<components['schemas']['DiscoveryResult']>('/discovery');
   settings = {
     get: () => this.request<Settings>('/settings'),
     save: (value: SettingsInput) => this.request<Settings>('/settings', {method:'PUT',body:JSON.stringify(value)})

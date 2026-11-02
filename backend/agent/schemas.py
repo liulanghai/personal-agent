@@ -45,6 +45,11 @@ class Skill(BaseModel):
     id: str
     name: str
     description: str
+    scope: str
+    source: str
+    path: str
+    directory: str
+    unsupported_fields: list[str]
 
 
 class Skills(BaseModel):
@@ -74,6 +79,9 @@ class Settings(BaseModel):
     base_url: str
     model: str
     has_api_key: bool
+    timezone: str
+    instruction_mode: Literal["auto", "codex", "claude"]
+    workspace_path: str
 
 
 class Health(BaseModel):
@@ -83,3 +91,22 @@ class Health(BaseModel):
 
 class ToolList(BaseModel):
     items: list[dict[str, Any]]
+
+
+class RuleSource(BaseModel):
+    scope: str
+    path: str
+    sha256: str
+
+
+class DiscoveryResult(BaseModel):
+    workspace_path: str
+    instructions: list[RuleSource]
+    skills: list[Skill]
+    warnings: list[str]
+
+
+class ContextManifest(BaseModel):
+    sections: list[dict[str, Any]]
+    total_characters: int
+    limit_characters: int
