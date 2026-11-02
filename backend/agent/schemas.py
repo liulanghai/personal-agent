@@ -71,7 +71,6 @@ class Files(BaseModel):
 
 
 class Settings(BaseModel):
-    mode: Literal["demo", "compatible"]
     base_url: str
     model: str
     has_api_key: bool
@@ -80,7 +79,6 @@ class Settings(BaseModel):
 class Health(BaseModel):
     status: Literal["ok"]
     version: str
-    mode: str
 
 
 class ToolList(BaseModel):

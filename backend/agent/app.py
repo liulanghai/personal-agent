@@ -34,7 +34,6 @@ class MessageInput(BaseModel):
 
 
 class SettingsInput(BaseModel):
-    mode: Literal["demo", "compatible"]
     base_url: str = Field(max_length=500)
     model: str = Field(max_length=200)
     api_key: Optional[str] = Field(default=None, max_length=4000)
@@ -51,7 +50,7 @@ def create_app(data_dir=None):
     def settings():
         if config_path.exists():
             return json.loads(config_path.read_text())
-        return {"mode": os.getenv("AGENT_MODE", "demo"), "base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"), "model": os.getenv("MODEL_NAME", ""), "api_key": os.getenv("MODEL_API_KEY", "")}
+        return {"base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"), "model": os.getenv("MODEL_NAME", ""), "api_key": os.getenv("MODEL_API_KEY", "")}
 
     runtime = Runtime(store, tools, settings)
 
@@ -102,12 +101,12 @@ def create_app(data_dir=None):
 
     @app.get("/api/v1/health", response_model=api.Health)
     async def health():
-        return {"status": "ok", "version": "0.1.0", "mode": settings()["mode"]}
+        return {"status": "ok", "version": "0.1.0"}
 
     @app.get("/api/v1/settings", response_model=api.Settings)
     async def get_settings():
         config = settings()
-        return {k: config[k] for k in ("mode", "base_url", "model")} | {"has_api_key": bool(config.get("api_key"))}
+        return {k: config[k] for k in ("base_url", "model")} | {"has_api_key": bool(config.get("api_key"))}
 
     @app.put("/api/v1/settings", response_model=api.Settings)
     async def put_settings(body: SettingsInput):
@@ -122,8 +121,8 @@ def create_app(data_dir=None):
             if body.base_url.rstrip("/") != previous["base_url"].rstrip("/") and previous.get("api_key"):
                 raise HTTPException(422, "更换模型地址时请重新输入密钥，避免将旧密钥发送给新服务")
             value["api_key"] = previous.get("api_key", "")
-        if body.mode == "compatible" and (not value["api_key"] or not body.model.strip()):
-            raise HTTPException(422, "真实模型模式需要模型名称和密钥")
+        if not body.model.strip():
+            raise HTTPException(422, "请填写模型名称")
         temp = config_path.with_suffix(".tmp")
         fd = os.open(str(temp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as handle:

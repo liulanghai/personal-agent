@@ -35,27 +35,6 @@ class Runtime:
             self.store.event(run_id, "message.delta", {"delta": content[i:i + 32]})
             await asyncio.sleep(0.015)
 
-    async def demo(self, run, message, files):
-        rid = run["id"]
-        skill_id = run["skill_id"] or ("weekly-report" if "周报" in message else "document-summary")
-        await self.call(rid, "read_skill", {"skill_id": skill_id})
-        await self.call(rid, "list_files", {})
-        sections = []
-        for file in files:
-            result = await self.call(rid, "read_file", {"path": file["path"]})
-            if "content" in result:
-                sections.append("### " + file["name"] + "\n\n" + result["content"][:5000] + "\n\n来源：`" + file["path"] + "`")
-        if not sections:
-            output = "当前为本地演示模式，未调用语言模型。\n\n已实际读取 **" + skill_id + "** Skill，并查看工作目录。上传 Markdown 或文本笔记后，我可以演示读取材料、保存产物的完整流程。\n\n要获得真正的智能回答，请在「设置」中配置模型地址、名称和 API 密钥，并切换到真实模型模式。"
-        else:
-            content = "# " + ("周报材料汇编" if skill_id == "weekly-report" else "文档材料汇编") + "\n\n> 演示产物：仅按文件汇编原文片段，未使用语言模型进行总结。每份最多保留 5000 字符。\n\n" + "\n\n".join(sections)
-            result = await self.call(rid, "write_file", {"path": "reports/" + rid + ".md", "content": content})
-            if "error" in result:
-                raise ValueError(result["error"])
-            output = "已完成演示流程：加载 Skill → 读取上传文件 → 保存材料汇编。\n\n**这是原文片段汇编，未进行 AI 总结。** 你可以在下方预览或下载产物。配置真实模型后，同一流程会由模型根据任务选择工具并撰写内容。"
-        await self.text(rid, output)
-        return output
-
     async def model(self, run, files):
         config = self.settings()
         if not config.get("api_key") or not config.get("model"):
@@ -118,13 +97,12 @@ class Runtime:
     async def execute(self, run_id):
         run = self.store.one("SELECT * FROM runs WHERE id=?", (run_id,))
         self.store.status(run_id, "running")
-        self.store.event(run_id, "run.started", {"mode": self.settings()["mode"]})
+        self.store.event(run_id, "run.started", {})
         try:
             files = []
             for file_id in json.loads(run["file_ids"]):
                 files.append(self.store.one("SELECT * FROM files WHERE id=?", (file_id,)))
-            message = self.store.one("SELECT content FROM messages WHERE run_id=? AND role='user'", (run_id,))["content"]
-            output = await (self.demo(run, message, files) if self.settings()["mode"] == "demo" else self.model(run, files))
+            output = await self.model(run, files)
             self.store.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (uid("msg"), run["conversation_id"], "assistant", output, run_id, now()))
             self.store.status(run_id, "completed")
             self.store.event(run_id, "run.completed", {})

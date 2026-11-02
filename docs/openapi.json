@@ -779,17 +779,12 @@
           "version": {
             "type": "string",
             "title": "Version"
-          },
-          "mode": {
-            "type": "string",
-            "title": "Mode"
           }
         },
         "type": "object",
         "required": [
           "status",
-          "version",
-          "mode"
+          "version"
         ],
         "title": "Health"
       },
@@ -975,14 +970,6 @@
       },
       "Settings": {
         "properties": {
-          "mode": {
-            "type": "string",
-            "enum": [
-              "demo",
-              "compatible"
-            ],
-            "title": "Mode"
-          },
           "base_url": {
             "type": "string",
             "title": "Base Url"
@@ -998,7 +985,6 @@
         },
         "type": "object",
         "required": [
-          "mode",
           "base_url",
           "model",
           "has_api_key"
@@ -1007,14 +993,6 @@
       },
       "SettingsInput": {
         "properties": {
-          "mode": {
-            "type": "string",
-            "enum": [
-              "demo",
-              "compatible"
-            ],
-            "title": "Mode"
-          },
           "base_url": {
             "type": "string",
             "maxLength": 500,
@@ -1040,7 +1018,6 @@
         },
         "type": "object",
         "required": [
-          "mode",
           "base_url",
           "model"
         ],

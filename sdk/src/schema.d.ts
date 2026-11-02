@@ -318,8 +318,6 @@ export interface components {
             status: "ok";
             /** Version */
             version: string;
-            /** Mode */
-            mode: string;
         };
         /** Message */
         Message: {
@@ -382,11 +380,6 @@ export interface components {
         };
         /** Settings */
         Settings: {
-            /**
-             * Mode
-             * @enum {string}
-             */
-            mode: "demo" | "compatible";
             /** Base Url */
             base_url: string;
             /** Model */
@@ -396,11 +389,6 @@ export interface components {
         };
         /** SettingsInput */
         SettingsInput: {
-            /**
-             * Mode
-             * @enum {string}
-             */
-            mode: "demo" | "compatible";
             /** Base Url */
             base_url: string;
             /** Model */

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 from pathlib import Path
@@ -6,11 +7,31 @@ import pytest
 from fastapi.testclient import TestClient
 from agent.app import create_app
 
+ORIGINAL_ASYNC_CLIENT = httpx.AsyncClient
+
 
 @pytest.fixture
 def app(tmp_path, monkeypatch):
     monkeypatch.delenv("AGENT_API_TOKEN", raising=False)
-    monkeypatch.setenv("AGENT_MODE", "demo")
+    # Mock the provider transport; application always follows the real model loop.
+    (tmp_path / "settings.json").write_text(json.dumps({"base_url":"https://model.example/v1", "model":"test-model", "api_key":"test-key"}))
+    async def provider(request):
+        await asyncio.sleep(.05)
+        messages = json.loads(request.content)["messages"]
+        files = json.loads(messages[0]["content"].split("Attached files for this request: ")[1])
+        step = sum(m["role"] == "tool" for m in messages)
+        plan = [("read_skill", {"skill_id":"weekly-report"}), ("list_files", {})]
+        if files:
+            plan.append(("read_file", {"path": files[0]["path"]}))
+            text = json.loads(messages[-1]["content"]).get("content", "") if step == 3 else ""
+            plan.append(("write_file", {"path":"reports/test.md", "content":text}))
+        if step < len(plan):
+            name, arguments = plan[step]
+            delta = {"tool_calls":[{"index":0, "id":"call_"+str(step), "function":{"name":name,"arguments":json.dumps(arguments)}}]}
+        else:
+            delta = {"content":"已完成测试任务"}
+        return httpx.Response(200, content="data: "+json.dumps({"choices":[{"delta":delta}]})+"\n\ndata: [DONE]\n\n")
+    monkeypatch.setattr("agent.runtime.httpx.AsyncClient", lambda **kwargs: ORIGINAL_ASYNC_CLIENT(transport=httpx.MockTransport(provider), **kwargs))
     return create_app(tmp_path)
 
 
@@ -56,7 +77,7 @@ def test_file_skill_artifact_history_and_replay(client):
     assert resumed == events[3:]
     artifact = client.get("/api/v1/artifacts", params={"run_id": run["id"]}).json()["items"][0]
     text = client.get(f'/api/v1/files/{artifact["id"]}/content').text
-    assert "已完成：API设计" in text and "演示产物" in text
+    assert "已完成：API设计" in text
     assert len(client.get(f"/api/v1/conversations/{cid}/messages").json()["items"]) == 2
 
 
@@ -77,7 +98,7 @@ def test_cancel(client):
 
 
 def test_settings_secret_not_echoed_and_host_change_requires_new_key(client, tmp_path):
-    value = {"mode":"compatible", "base_url":"https://example.com/v1", "model":"test", "api_key":"secret-test-value"}
+    value = {"base_url":"https://example.com/v1", "model":"test", "api_key":"secret-test-value"}
     result = client.put("/api/v1/settings", json=value)
     assert result.status_code == 200
     assert result.json()["has_api_key"] is True
@@ -86,7 +107,7 @@ def test_settings_secret_not_echoed_and_host_change_requires_new_key(client, tmp
     assert (tmp_path / "settings.json").stat().st_mode & 0o777 == 0o600
     value.update(base_url="https://other.example/v1", api_key=None)
     assert client.put("/api/v1/settings", json=value).status_code == 422
-    value.update(mode="demo",api_key="")
+    value.update(api_key="")
     assert client.put("/api/v1/settings", json=value).json()["has_api_key"] is False
 
 
@@ -135,7 +156,7 @@ def test_interrupted_run_marks_failure_after_restart(tmp_path):
 
 def test_compatible_model_stream_and_tool_execution(client, monkeypatch):
     calls = []
-    real_client = httpx.AsyncClient
+    real_client = ORIGINAL_ASYNC_CLIENT
     def mock(request):
         body = json.loads(request.content)
         calls.append(body)
@@ -151,3 +172,22 @@ def test_compatible_model_stream_and_tool_execution(client, monkeypatch):
     assert wait(client, run["id"])["status"] == "completed"
     assert len(calls) == 2
     assert client.get(f"/api/v1/conversations/{cid}/messages").json()["items"][-1]["content"] == "真实协议模拟成功"
+
+
+def test_legacy_mode_is_ignored_and_configuration_is_preserved(tmp_path):
+    config = {"mode":"demo", "base_url":"https://model.example/v1", "model":"existing-model", "api_key":"existing-secret"}
+    (tmp_path / "settings.json").write_text(json.dumps(config))
+    with TestClient(create_app(tmp_path)) as client:
+        response = client.get("/api/v1/settings").json()
+        assert "mode" not in response
+        assert response["model"] == "existing-model" and response["has_api_key"]
+        assert json.loads((tmp_path / "settings.json").read_text()) == config
+        assert "mode" not in client.get("/api/v1/health").json()
+
+
+def test_missing_key_fails_without_fallback(client):
+    client.put("/api/v1/settings", json={"base_url":"https://model.example/v1", "model":"test", "api_key":""})
+    _, run, _ = send(client)
+    result = wait(client, run["id"])
+    assert result["status"] == "failed"
+    assert "密钥" in result["error"]

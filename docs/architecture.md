@@ -20,7 +20,7 @@ HTTP 业务错误格式为 `{ "error": { "code": "...", "message": "..." } }`；
 
 GET `/runs/{id}/events` 使用 SSE。每个事件包含 `id`、全局递增 `sequence`、`run_id`、`type`、`data`、`created_at`。sequence 可有间隔，客户端不能假设连续。事件写入数据库后才推送。
 
-- `run.started`: mode
+- `run.started`: 空对象
 - `message.delta`: delta
 - `tool_call.started`: tool_call_id, tool_name, arguments
 - `tool_call.completed`: tool_call_id, tool_name, status, result
@@ -38,7 +38,7 @@ GET `/runs/{id}/events` 使用 SSE。每个事件包含 `id`、全局递增 `seq
 
 ## 模型配置
 
-PUT `/settings` 接收 mode、base_url、model、api_key。api_key 为 null 时保留，空字符串清除；切换 base_url 且存在旧密钥时必须显式输入新密钥。GET 仅返回 has_api_key。配置持久化到忽略的 data 目录。任务开始时读取配置；进行中的任务使用已读入的配置，不中途切换 provider。
+PUT `/settings` 接收 base_url、model、api_key。api_key 为 null 时保留，空字符串清除；切换 base_url 且存在旧密钥时必须显式输入新密钥。GET 仅返回 has_api_key。配置持久化到忽略的 data 目录。任务开始时读取配置；进行中的任务使用已读入的配置，不中途切换 provider。
 
 ## 技术参考
 
@@ -47,3 +47,7 @@ PUT `/settings` 接收 mode、base_url、model、api_key。api_key 为 null 时�
 - [Vite 开发指南](https://vite.dev/guide/)
 - [React TypeScript](https://react.dev/learn/typescript)
 - [Chat Completions API](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+
+## 移除演示分支
+
+所有 Run 直接调用模型；不再提供 mode 配置或演示回退。旧 settings.json 中的 mode 字段被忽略，地址、模型名和密钥继续沿用；无需改写旧配置。请求/响应契约及 SDK 已同步更新。清除密钥仍可保存，但后续执行会明确报告未配置。
