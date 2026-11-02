@@ -1,0 +1,14 @@
+{
+  "name": "personal-agent-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["frontend", "sdk"],
+  "scripts": {
+    "dev": "npm run dev -w frontend",
+    "build": "npm run typecheck && npm run build -w frontend",
+    "typecheck": "tsc -p frontend/tsconfig.json --noEmit",
+    "sdk:generate": ".venv/bin/python scripts/export_openapi.py && openapi-typescript docs/openapi.json -o sdk/src/schema.d.ts"
+  },
+  "devDependencies": {"openapi-typescript": "^7.6.1", "typescript": "~5.8.3"},
+  "overrides": {"minimatch": "^11.0.1"}
+}
