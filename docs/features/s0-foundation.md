@@ -376,7 +376,7 @@ frontend/src/
 | PR | 分支 | 内容 | 状态 |
 | --- | --- | --- | --- |
 | PR1 | #3 | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 已合并 2026-11-03 |
-| PR2 | | 后端模块拆分 | 未开始 |
+| PR2 | `refactor/s0-backend-split` | 后端模块拆分 | 评审中 |
 | PR3 | | Provider 最小抽象 | 未开始 |
 | PR4 | | 前端拆分 | 未开始 |
 
@@ -389,6 +389,18 @@ PR1 实现说明与偏离：
 - `npm run sdk:generate` 保留为 `make gen` 的别名。
 - 附带发现（未处理，记入遗留）：`tools.py` 覆盖率 70%，`search_files` 分支无测试。
 
+PR2 实现说明与偏离：
+
+- 按 ③ 的目标结构拆分；文件用 `git mv` 移动以保留历史（`schemas.py → api/schemas.py`、`context.py → context/builder.py`、`discovery.py → context/discovery.py`）。
+- 在 ③ 结构之外新增三个小模块：`api/deps.py`（`Services` 容器 + `require_conversation/run/file`，替代拼接表名的 `require(table, id)`）、`api/routes/system.py`（health，避免放进无关路由）、以及 `store.RunConflictError`（让 SQLite 异常不越过存储层）。
+- `store.py`：SQL 全部收拢为具名方法（`create_run`、`list_runs`、`latest_event_data` 等），返回 TypedDict；`runs.file_ids` 在存储层解码为 `list[str]`，原 `public_run` 删除。`Store.execute` 保留为公开方法，仅供测试插入原始行。
+- `tools/paths.py` 成为唯一的路径校验实现：工作空间、`reports/` 写入限制、Skill 资源目录三处都经由它。
+- `tools/__init__.py`、`context/__init__.py` 不做再导出，避免 `context.discovery → tools.paths` 与 `tools.registry → context.discovery` 形成导入环。
+- 删除未调用的 `Runtime.text`；取消逻辑从路由移入 `Runtime.cancel`，启动恢复/关闭移入 `Runtime.recover_interrupted/shutdown`。
+- mypy 放宽名单已**清空**（`pyproject.toml` 中整段删除），全部 27 个源文件通过 strict。
+- 测试改动仅限路径：`agent.runtime.httpx.AsyncClient → agent.runtime.loop.httpx.AsyncClient`，`agent.context / agent.tools` 的 import 改为子模块；断言未改。新增 `tests/test_tools.py`（5 项）：`search_files` 大小写不敏感的字面匹配与行号、跳过非 UTF-8/超限文件/符号链接、50 条上限与 400 字截断、空查询被 schema 拒绝；`read_file` 超限。
+- **OpenAPI 与 SDK 有顺序差异、无语义差异**：路由按模块注册后 `/api/v1/discovery` 在 paths 中的位置从 `/runs/{rid}/context` 之后移到 `/runs/{rid}/events` 之后。已验证：新旧 `openapi.json` 解析后 `==` 为真；两份生成文件新旧版本的行集合（排序后）完全相同。按 `check-gen` 规则提交重新生成的文件。与 ③ 中"OpenAPI 零差异"的表述有出入，在 PR 中说明。
+
 ## ⑤ 验证与评测
 
 PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
@@ -399,5 +411,13 @@ PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
 - 覆盖率基线：总计 88%（app 88%、discovery 89%、runtime 86%、tools 70%）。
 - GitHub Actions 首次运行通过（27s）。仓库设置：`main` 必需检查 `check`（strict）、仅 squash、合并后删除分支。
 - 未验证：Python 3.12 下的浏览器验收主线手工复测（留待 S0 结束时统一进行）。
+
+PR2（2026-11-03，本机）：
+
+- `make check` 退出码 0：ruff、ruff format、mypy strict（27 个源文件、无放宽名单）、tsc、pytest 25 项通过（原 20 项断言未改 + 新增 5 项）、契约一致性通过。`make build` 通过。
+- 覆盖率总计 88% → 93%；工具层原 `tools.py` 70% → `tools/files.py` 100%、`tools/registry.py` 94%。
+- 路由与 Runtime 中无 SQL：`grep -rE "SELECT|INSERT|UPDATE |DELETE "` 除 `store.py` 外无结果。
+- 真实进程冒烟：`uvicorn agent.app:create_app --factory` 启动，`/api/v1/health` 返回 ok，`/api/v1/settings` 字段不变，恶意 Origin 返回 403。
+- 未验证：浏览器验收主线（仍留待 S0 结束时统一进行）。
 
 ## ⑥ 学习总结（用户执笔）

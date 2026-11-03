@@ -8,6 +8,34 @@ Web 不直接访问模型、工作目录或数据库。桌面端可复用 SDK，
 
 Conversation 是持续会话；Run 是一次执行。首版同一会话只允许一个活跃 Run，其他会话可并发。Tools 的参数由 JSON Schema 校验。Skill 是流程资料，无权扩展执行权限。
 
+## 后端模块
+
+```
+backend/agent/
+  app.py              create_app：只做组装（配置、存储、工具、Runtime、中间件、路由、静态文件）
+  config.py           SettingsStore：settings.json / 环境变量读取、校验、0600 原子写入
+  security.py         Origin / Bearer / 回环 Host 校验中间件
+  store.py            SQLite；全部 SQL 只在此处，对外为具名方法 + TypedDict 行类型
+  api/
+    schemas.py        请求/响应模型（OpenAPI 与 SDK 的来源）
+    errors.py         统一错误格式
+    deps.py           Services 容器与 require_* 查询（不存在时 404）
+    routes/           system · settings · conversations · runs · skills · files（APIRouter）
+  runtime/
+    runtime.py        Run 生命周期：launch / execute / cancel / 启动时中断恢复 / 关闭
+    loop.py           Agent 循环：模型流式调用、工具调用、步数上限
+  tools/
+    registry.py       工具定义（JSON Schema）、参数校验、分发；Tools 门面
+    paths.py          工作空间边界：唯一的路径校验实现
+    files.py          list / read / search / write
+    skills.py         list_skills / read_skill / read_skill_resource
+  context/
+    builder.py        ContextBuilder
+    discovery.py      规则与 Skill 发现
+```
+
+依赖方向：`api → runtime → context/tools → store`；路由与 Runtime 不拼写 SQL，路径校验只经由 `tools/paths.py`。所有模块均通过 mypy strict。
+
 ## HTTP
 
 路径统一为 `/api/v1`。创建会话返回 201；发送消息返回 202 和 Run。`Idempotency-Key` 保证同一请求重试返回同一 Run；相同 key 不同输入返回 409。发送超时但不确定是否成功时，客户端必须使用原 key 重试；首版 Web 出错后不会自动重试发送。
