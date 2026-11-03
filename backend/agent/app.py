@@ -196,7 +196,7 @@ def create_app(data_dir=None):
         try:
             ZoneInfo(value["timezone"])
         except (ZoneInfoNotFoundError, ValueError):
-            raise HTTPException(422, "无效时区，请填写 Asia/Shanghai 等 IANA 时区")
+            raise HTTPException(422, "无效时区，请填写 Asia/Shanghai 等 IANA 时区") from None
         if body.api_key is None:
             if body.base_url.rstrip("/") != previous["base_url"].rstrip("/") and previous.get(
                 "api_key"
@@ -280,7 +280,7 @@ def create_app(data_dir=None):
                     (body.content[:32], cid),
                 )
         except sqlite3.IntegrityError:
-            raise HTTPException(409, "Conversation already has an active run")
+            raise HTTPException(409, "Conversation already has an active run") from None
         runtime.launch(rid)
         return public_run(require("runs", rid))
 
@@ -300,7 +300,8 @@ def create_app(data_dir=None):
     async def run_context(rid: str):
         require("runs", rid)
         event = store.one(
-            "SELECT data FROM events WHERE run_id=? AND type='context.built' ORDER BY sequence DESC LIMIT 1",
+            "SELECT data FROM events WHERE run_id=? AND type='context.built' "
+            "ORDER BY sequence DESC LIMIT 1",
             (rid,),
         )
         if not event:
@@ -388,7 +389,7 @@ def create_app(data_dir=None):
         try:
             return tools.skill(skill_id)
         except ValueError:
-            raise HTTPException(404, "Unknown skill")
+            raise HTTPException(404, "Unknown skill") from None
 
     @app.get("/api/v1/tools", response_model=api.ToolList)
     async def tool_definitions():
@@ -402,7 +403,9 @@ def create_app(data_dir=None):
         try:
             content.decode("utf-8")
         except UnicodeError:
-            raise HTTPException(422, "首版支持 UTF-8 文本和 Markdown；暂不支持 PDF、Word 或图片")
+            raise HTTPException(
+                422, "首版支持 UTF-8 文本和 Markdown；暂不支持 PDF、Word 或图片"
+            ) from None
         file_id = uid("file")
         name = Path(file.filename or "document.txt").name[:180]
         if Path(name).suffix.lower() not in (".md", ".txt", ".csv", ".json", ".log"):

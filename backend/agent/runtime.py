@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from typing import Any
 
 import httpx
 
@@ -67,7 +68,7 @@ class Runtime:
         final = []
         async with httpx.AsyncClient(timeout=90, follow_redirects=False) as client:
             for _ in range(min(int(os.getenv("AGENT_MAX_STEPS", "16")), 32)):
-                calls = {}
+                calls: dict[int, dict[str, Any]] = {}
                 content = ""
                 async with client.stream(
                     "POST",

@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -26,11 +27,12 @@ class Discovery:
             if home is None
             else self.home / ".codex"
         )
-        self.warnings = []
+        self.warnings: list[str] = []
 
     def instructions(self, mode="auto"):
         """One file per scope; auto prefers Codex names, reports alternatives."""
-        result, warnings = [], []
+        result: list[dict[str, Any]] = []
+        warnings: list[str] = []
         scopes = [
             (
                 "user",
@@ -82,7 +84,9 @@ class Discovery:
             ("user", "codex-legacy", self.codex_home / "skills"),
             ("builtin", "bundled", self.bundled),
         ]
-        result, seen, warnings = [], set(), []
+        result: list[dict[str, Any]] = []
+        seen: set[Path] = set()
+        warnings: list[str] = []
         for scope, source, root in roots:
             if not root.is_dir():
                 continue
@@ -133,7 +137,7 @@ class Discovery:
                     warnings.append(
                         "技能未加载，请检查 UTF-8、大小和 name/description：" + str(path)
                     )
-        counts = {}
+        counts: dict[str, int] = {}
         for skill in result:
             counts[skill["id"]] = counts.get(skill["id"], 0) + 1
         for skill in result:

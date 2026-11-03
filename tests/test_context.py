@@ -104,7 +104,10 @@ def test_skill_resources_and_boundaries(tools):
 
 def test_context_budget_and_extension_provider(tools):
     run = {"id": "run", "conversation_id": "conv"}
-    provider = lambda config, run: {"name": "test_extension", "data": {"version": 1}}
+
+    def provider(config, run):
+        return {"name": "test_extension", "data": {"version": 1}}
+
     messages, manifest = ContextBuilder(tools, providers=[provider]).build({}, run, [], [])
     assert "test_extension" in messages[0]["content"]
     assert manifest["sections"][0]["name"] == "test_extension"

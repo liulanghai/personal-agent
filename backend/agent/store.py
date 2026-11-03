@@ -20,13 +20,51 @@ class Store:
         with self.connect() as db:
             db.executescript("""
             PRAGMA journal_mode=WAL;
-            CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY, title TEXT, created_at TEXT);
-            CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY, conversation_id TEXT, role TEXT, content TEXT, run_id TEXT, created_at TEXT);
-            CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY, conversation_id TEXT, status TEXT, skill_id TEXT, file_ids TEXT, error TEXT, created_at TEXT, updated_at TEXT, request_key TEXT UNIQUE, request_hash TEXT);
-            CREATE UNIQUE INDEX IF NOT EXISTS one_active_run ON runs(conversation_id) WHERE status IN ('queued','running');
-            CREATE TABLE IF NOT EXISTS events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT UNIQUE, run_id TEXT, type TEXT, data TEXT, created_at TEXT);
+            CREATE TABLE IF NOT EXISTS conversations(
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS messages(
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                role TEXT,
+                content TEXT,
+                run_id TEXT,
+                created_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS runs(
+                id TEXT PRIMARY KEY,
+                conversation_id TEXT,
+                status TEXT,
+                skill_id TEXT,
+                file_ids TEXT,
+                error TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                request_key TEXT UNIQUE,
+                request_hash TEXT
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS one_active_run ON runs(conversation_id)
+                WHERE status IN ('queued','running');
+            CREATE TABLE IF NOT EXISTS events(
+                sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+                id TEXT UNIQUE,
+                run_id TEXT,
+                type TEXT,
+                data TEXT,
+                created_at TEXT
+            );
             CREATE INDEX IF NOT EXISTS run_events ON events(run_id, sequence);
-            CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, name TEXT, path TEXT, kind TEXT, run_id TEXT, size INTEGER, created_at TEXT);
+            CREATE TABLE IF NOT EXISTS files(
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                path TEXT,
+                kind TEXT,
+                run_id TEXT,
+                size INTEGER,
+                created_at TEXT
+            );
             """)
 
     def connect(self):
