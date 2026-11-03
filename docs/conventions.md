@@ -40,9 +40,9 @@ backend/agent/
 
 ## Python
 
-- 版本：Python 3.12（`requires-python = ">=3.12"`，S0 落地）。依赖管理使用 uv 与锁文件。
-- 格式化与 lint：ruff，行宽 100；启用 `E,F,I,B,UP,SIM,ASYNC` 等规则（S0 落地）。
-- 类型：mypy（或 pyright），新代码必须带类型注解；公共函数参数与返回值不可省略。
+- 版本：Python 3.12（`.python-version`、`requires-python = ">=3.12"`）。依赖管理使用 uv：`uv add/remove` 修改依赖，提交 `uv.lock`；`exclude-newer = "7 days"` 只解析发布满一周的包。
+- 格式化与 lint：ruff，行宽 100，规则 `E,W,F,I,B,C4,ASYNC,UP`（配置见 `pyproject.toml`）。
+- 类型：mypy 全局 `strict`。S0 之前的旧模块列在 `[[tool.mypy.overrides]]` 中暂时放宽；重写一个模块时把它移出名单，名单只减不增。
 - 数据结构：跨模块传递的数据使用 Pydantic 模型或 dataclass，避免裸 `dict` 在多层间传递。
 - 异步：IO 一律 async；禁止在事件循环中执行阻塞调用（文件大量读写使用线程池）。
 - 错误：业务错误使用自定义异常类型并映射为统一错误格式；不吞异常；不向日志或事件写入密钥与 provider 原始响应体。
@@ -65,12 +65,12 @@ backend/agent/
 ## 依赖
 
 - 新增依赖需在方案阶段说明理由与替代方案；优先标准库与已有依赖。
-- 锁文件随依赖变更一起提交；定期运行 `npm audit` 与 `pip-audit`（S0 落地）。
+- 锁文件随依赖变更一起提交（CI 运行 `uv lock --check`）；定期运行 `npm audit`。
 
 ## API 演进
 
 - 路径前缀 `/api/v1`；破坏性变更需新版本或兼容期，在 PR 中显式标注。
-- 修改 API 后运行 `npm run sdk:generate`，CI 检查生成文件与源码一致（S0 落地）。
+- 修改 API 后运行 `make gen`；`make check-gen`（CI 中执行）在生成物与提交版本不一致时失败。
 - 事件类型新增字段向后兼容；删除或改名视为破坏性变更。
 
 ## 文档

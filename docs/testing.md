@@ -35,11 +35,9 @@ Agent 系统同时包含**确定性代码**（工具、存储、协议解析）�
 
 ## 命令
 
-当前：
-
 ```sh
-.venv/bin/python -m pytest -q
-npm run build   # 含 TypeScript 类型检查
+make test        # pytest + 覆盖率报告（只统计，不设门槛；S0 基线 88%）
+make check       # lint + 类型检查 + 测试 + 契约一致性，CI 运行同一命令
 ```
 
-S0 完成后统一为 `make check`（lint + 类型检查 + 测试 + 契约检查），CI 运行同一命令。届时同步更新本节与 `AGENTS.md`。
+`tests/conftest.py` 的 autouse fixture 拦截真实 `httpx` 传输：任何测试一旦发出真实网络请求立即失败。需要模拟模型时使用 `httpx.MockTransport`（S0 PR3 起优先使用 `ScriptedProvider`）。

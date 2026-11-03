@@ -373,6 +373,30 @@ frontend/src/
 
 ## ④ 实现记录
 
+| PR | 分支 | 内容 | 状态 |
+| --- | --- | --- | --- |
+| PR1 | `feat/s0-toolchain` | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 待评审 |
+| PR2 | | 后端模块拆分 | 未开始 |
+| PR3 | | Provider 最小抽象 | 未开始 |
+| PR4 | | 前端拆分 | 未开始 |
+
+PR1 实现说明与偏离：
+
+- 首次锁定通过临时 `constraint-dependencies` 固定为原 `requirements.lock` 版本后移除约束，运行时依赖版本不变（fastapi 0.128.8、httpx 0.28.1、pydantic 2.13.5…）。
+- ruff 剩余问题的处理：`B904` 在 4 处 `raise HTTPException(...)` 后加 `from None`（不改变响应）；长字符串拆为隐式拼接，**系统提示词经 AST 校验字节一致**（sha256 前缀 `e14aaab540bd4543`）；建表 SQL 换行，语义不变；FastAPI 的 `File`/`Header` 默认参数通过 `extend-immutable-calls` 允许。
+- mypy 旧模块放宽名单：`app`、`context`、`discovery`、`runtime`、`store`、`tools`；仅补了 6 处局部变量注解以通过 `check_untyped_defs`。
+- 删除误提交的编辑器交换文件 `docs/features/.s0-foundation.md.swp`，`.gitignore` 增加 `*.swp`、缓存与 `*.egg-info/`。
+- `npm run sdk:generate` 保留为 `make gen` 的别名。
+- 附带发现（未处理，记入遗留）：`tools.py` 覆盖率 70%，`search_files` 分支无测试。
+
 ## ⑤ 验证与评测
+
+PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
+
+- `make check` 退出码 0：ruff、ruff format、mypy（8 个源文件无错误）、tsc、pytest 20 项通过（新增网络拦截守卫测试）、契约一致性通过。
+- 契约检查反例：临时修改 API 标题后 `make check-gen` 失败（退出码 2），还原后通过。
+- `make build` 通过。`pre-commit run --all-files` 通过（首次运行修复了 TEMPLATE.md 行尾空格）。
+- 覆盖率基线：总计 88%（app 88%、discovery 89%、runtime 86%、tools 70%）。
+- 未验证：GitHub Actions 实际运行结果（需推送后查看）；Python 3.12 下的浏览器验收主线手工复测（留待 S0 结束时统一进行）。
 
 ## ⑥ 学习总结（用户执笔）

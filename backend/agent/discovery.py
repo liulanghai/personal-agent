@@ -1,8 +1,11 @@
 """Conventional instruction/skill discovery, independent of model providers."""
+
 import hashlib
 import os
 import re
 from pathlib import Path
+from typing import Any
+
 import yaml
 
 LIMIT = 60000
@@ -19,18 +22,33 @@ class Discovery:
         self.workspace = Path(workspace).resolve()
         self.bundled = Path(bundled)
         self.home = Path(home) if home is not None else Path.home()
-        self.codex_home = Path(os.getenv("CODEX_HOME", self.home / ".codex")) if home is None else self.home / ".codex"
-        self.warnings = []
+        self.codex_home = (
+            Path(os.getenv("CODEX_HOME", self.home / ".codex"))
+            if home is None
+            else self.home / ".codex"
+        )
+        self.warnings: list[str] = []
 
     def instructions(self, mode="auto"):
         """One file per scope; auto prefers Codex names, reports alternatives."""
-        result, warnings = [], []
+        result: list[dict[str, Any]] = []
+        warnings: list[str] = []
         scopes = [
-            ("user", [self.codex_home / "AGENTS.override.md", self.codex_home / "AGENTS.md"], [self.home / ".claude/CLAUDE.md"]),
-            ("project", [self.workspace / "AGENTS.override.md", self.workspace / "AGENTS.md"], [self.workspace / "CLAUDE.md", self.workspace / ".claude/CLAUDE.md"]),
+            (
+                "user",
+                [self.codex_home / "AGENTS.override.md", self.codex_home / "AGENTS.md"],
+                [self.home / ".claude/CLAUDE.md"],
+            ),
+            (
+                "project",
+                [self.workspace / "AGENTS.override.md", self.workspace / "AGENTS.md"],
+                [self.workspace / "CLAUDE.md", self.workspace / ".claude/CLAUDE.md"],
+            ),
         ]
         for scope, codex, claude in scopes:
-            candidates = codex if mode == "codex" else claude if mode == "claude" else codex + claude
+            candidates = (
+                codex if mode == "codex" else claude if mode == "claude" else codex + claude
+            )
             existing = [p for p in candidates if p.is_file()]
             chosen = None
             for path in existing:
@@ -38,12 +56,23 @@ class Discovery:
                     text = text_file(path)
                     if text.strip():
                         chosen = path
-                        result.append({"scope": scope, "path": str(path), "content": text, "sha256": hashlib.sha256(text.encode()).hexdigest()})
+                        result.append(
+                            {
+                                "scope": scope,
+                                "path": str(path),
+                                "content": text,
+                                "sha256": hashlib.sha256(text.encode()).hexdigest(),
+                            }
+                        )
                         break
                 except (OSError, UnicodeError, ValueError) as exc:
                     raise ValueError("无法加载规则文件：" + str(path)) from exc
             if chosen:
-                warnings.extend("规则未合并（同层优先文件为 " + str(chosen) + "）：" + str(p) for p in existing if p != chosen)
+                warnings.extend(
+                    "规则未合并（同层优先文件为 " + str(chosen) + "）：" + str(p)
+                    for p in existing
+                    if p != chosen
+                )
         return result, warnings
 
     def skills(self):
@@ -55,7 +84,9 @@ class Discovery:
             ("user", "codex-legacy", self.codex_home / "skills"),
             ("builtin", "bundled", self.bundled),
         ]
-        result, seen, warnings = [], set(), []
+        result: list[dict[str, Any]] = []
+        seen: set[Path] = set()
+        warnings: list[str] = []
         for scope, source, root in roots:
             if not root.is_dir():
                 continue
@@ -81,12 +112,32 @@ class Discovery:
                     if not isinstance(metadata, dict):
                         raise ValueError("Invalid metadata")
                     name, description = metadata.get("name"), metadata.get("description")
-                    if not isinstance(name, str) or not name.strip() or not isinstance(description, str) or not description.strip():
+                    if (
+                        not isinstance(name, str)
+                        or not name.strip()
+                        or not isinstance(description, str)
+                        or not description.strip()
+                    ):
                         raise ValueError("name and description are required")
-                    result.append({"id": name, "name": name, "description": description, "scope": scope, "source": source, "path": str(path), "directory": str(resolved.parent), "unsupported_fields": sorted(str(k) for k in metadata if k not in ("name", "description"))})
+                    result.append(
+                        {
+                            "id": name,
+                            "name": name,
+                            "description": description,
+                            "scope": scope,
+                            "source": source,
+                            "path": str(path),
+                            "directory": str(resolved.parent),
+                            "unsupported_fields": sorted(
+                                str(k) for k in metadata if k not in ("name", "description")
+                            ),
+                        }
+                    )
                 except (OSError, UnicodeError, ValueError, yaml.YAMLError):
-                    warnings.append("技能未加载，请检查 UTF-8、大小和 name/description：" + str(path))
-        counts = {}
+                    warnings.append(
+                        "技能未加载，请检查 UTF-8、大小和 name/description：" + str(path)
+                    )
+        counts: dict[str, int] = {}
         for skill in result:
             counts[skill["id"]] = counts.get(skill["id"], 0) + 1
         for skill in result:

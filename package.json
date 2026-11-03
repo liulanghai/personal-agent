@@ -7,7 +7,7 @@
     "dev": "npm run dev -w frontend",
     "build": "npm run typecheck && npm run build -w frontend",
     "typecheck": "tsc -p frontend/tsconfig.json --noEmit",
-    "sdk:generate": ".venv/bin/python scripts/export_openapi.py && openapi-typescript docs/openapi.json -o sdk/src/schema.d.ts"
+    "sdk:generate": "make gen"
   },
   "devDependencies": {"openapi-typescript": "^7.6.1", "typescript": "~5.8.3"},
   "overrides": {"minimatch": "^11.0.1"}

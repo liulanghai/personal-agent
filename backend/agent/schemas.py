@@ -1,5 +1,7 @@
 """Public response contracts shared with generated desktop/web clients."""
-from typing import Any, Literal, Optional
+
+from typing import Any, Literal
+
 from pydantic import BaseModel
 
 
@@ -30,9 +32,9 @@ class Run(BaseModel):
     id: str
     conversation_id: str
     status: Literal["queued", "running", "completed", "failed", "cancelled"]
-    skill_id: Optional[str]
+    skill_id: str | None
     file_ids: list[str]
-    error: Optional[str]
+    error: str | None
     created_at: str
     updated_at: str
 
@@ -66,7 +68,7 @@ class AgentFile(BaseModel):
     name: str
     path: str
     kind: Literal["upload", "artifact"]
-    run_id: Optional[str]
+    run_id: str | None
     size: int
     created_at: str
 

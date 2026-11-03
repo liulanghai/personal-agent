@@ -1,23 +1,48 @@
-import json
 from pathlib import Path
+
 from jsonschema import validate
-from .store import uid, now
+
 from .discovery import Discovery
+from .store import now, uid
 
 MAX_TEXT = 60000
 
 
 def schema(name, description, properties, required):
-    return {"type": "function", "function": {"name": name, "description": description, "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}}}
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+                "additionalProperties": False,
+            },
+        },
+    }
 
 
 STR = {"type": "string", "minLength": 1}
 DEFINITIONS = [
-    schema("read_skill_resource", "Read a UTF-8 reference or template within a discovered skill; does not execute scripts.", {"skill_id": STR, "path": STR}, ["skill_id", "path"]),
+    schema(
+        "read_skill_resource",
+        "Read a UTF-8 reference or template within a discovered skill; does not execute scripts.",
+        {"skill_id": STR, "path": STR},
+        ["skill_id", "path"],
+    ),
     schema("list_files", "List up to 100 files in the workspace.", {}, []),
-    schema("read_file", "Read a UTF-8 text file in workspace (up to 60KB).", {"path": STR}, ["path"]),
+    schema(
+        "read_file", "Read a UTF-8 text file in workspace (up to 60KB).", {"path": STR}, ["path"]
+    ),
     schema("search_files", "Search UTF-8 files using a literal query.", {"query": STR}, ["query"]),
-    schema("write_file", "Create a new UTF-8 artifact under reports/. Existing files cannot be overwritten.", {"path": STR, "content": {"type": "string", "maxLength": MAX_TEXT}}, ["path", "content"]),
+    schema(
+        "write_file",
+        "Create a new UTF-8 artifact under reports/. Existing files cannot be overwritten.",
+        {"path": STR, "content": {"type": "string", "maxLength": MAX_TEXT}},
+        ["path", "content"],
+    ),
     schema("list_skills", "List available skills and their descriptions.", {}, []),
     schema("read_skill", "Load full instructions for a skill.", {"skill_id": STR}, ["skill_id"]),
 ]
@@ -53,7 +78,11 @@ class Tools:
         if name == "read_skill":
             return self.skill(args["skill_id"])
         if name == "list_files":
-            return [str(p.relative_to(self.workspace)) for p in self.workspace.rglob("*") if p.is_file() and not p.is_symlink()][:100]
+            return [
+                str(p.relative_to(self.workspace))
+                for p in self.workspace.rglob("*")
+                if p.is_file() and not p.is_symlink()
+            ][:100]
         if name == "read_file":
             path = self.path(args["path"])
             if path.stat().st_size > MAX_TEXT:
@@ -82,7 +111,23 @@ class Tools:
             handle.write(args["content"])
         file_id = uid("file")
         size = path.stat().st_size
-        self.store.execute("INSERT INTO files VALUES (?,?,?,?,?,?,?)", (file_id, path.name, str(path.relative_to(self.workspace)), "artifact", run_id, size, now()))
-        artifact = {"id": file_id, "name": path.name, "path": str(path.relative_to(self.workspace)), "size": size}
+        self.store.execute(
+            "INSERT INTO files VALUES (?,?,?,?,?,?,?)",
+            (
+                file_id,
+                path.name,
+                str(path.relative_to(self.workspace)),
+                "artifact",
+                run_id,
+                size,
+                now(),
+            ),
+        )
+        artifact = {
+            "id": file_id,
+            "name": path.name,
+            "path": str(path.relative_to(self.workspace)),
+            "size": size,
+        }
         self.store.event(run_id, "artifact.created", artifact)
         return artifact

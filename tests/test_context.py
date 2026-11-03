@@ -1,16 +1,21 @@
 import json
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
+
 import pytest
+
 from agent.context import ContextBuilder
-from agent.discovery import Discovery
 from agent.store import Store
 from agent.tools import Tools
 
 
 @pytest.fixture
 def tools(tmp_path):
-    return Tools(tmp_path / "workspace", tmp_path / "bundled", Store(tmp_path / "test.sqlite"), home=tmp_path / "home")
+    return Tools(
+        tmp_path / "workspace",
+        tmp_path / "bundled",
+        Store(tmp_path / "test.sqlite"),
+        home=tmp_path / "home",
+    )
 
 
 def write(path, content):
@@ -19,18 +24,27 @@ def write(path, content):
 
 
 def skill(path, name="example", extra=""):
-    write(path / "SKILL.md", "---\nname: " + name + "\ndescription: |\n  A reusable workflow\n" + extra + "---\nPrivate body not loaded in catalog")
+    write(
+        path / "SKILL.md",
+        "---\nname: "
+        + name
+        + "\ndescription: |\n  A reusable workflow\n"
+        + extra
+        + "---\nPrivate body not loaded in catalog",
+    )
 
 
 def test_timezone_midnight_and_manifest_without_secrets(tools):
-    builder = ContextBuilder(tools, clock=lambda: datetime(2026, 11, 2, 16, 1, tzinfo=timezone.utc))
-    run = {"id":"run_test", "conversation_id":"conv_test", "skill_id":None}
-    messages, manifest = builder.build({"timezone":"Asia/Shanghai", "api_key":"never-in-context"}, run, [], [])
+    builder = ContextBuilder(tools, clock=lambda: datetime(2026, 11, 2, 16, 1, tzinfo=UTC))
+    run = {"id": "run_test", "conversation_id": "conv_test", "skill_id": None}
+    messages, manifest = builder.build(
+        {"timezone": "Asia/Shanghai", "api_key": "never-in-context"}, run, [], []
+    )
     env = manifest["sections"][0]["environment"]
     assert env["current_date"] == "2026-11-03" and env["weekday"] == "星期二"
     assert env["current_datetime"].endswith("+08:00")
     assert "never-in-context" not in json.dumps([messages, manifest])
-    _, other = builder.build({"timezone":"America/Los_Angeles"}, run, [], [])
+    _, other = builder.build({"timezone": "America/Los_Angeles"}, run, [], [])
     assert other["sections"][0]["environment"]["current_date"] == "2026-11-02"
 
 
@@ -55,7 +69,9 @@ def test_skill_roots_duplicates_symlinks_and_lazy_loading(tools):
     skill(tools.discovery.home / ".claude/skills/example", extra="allowed-tools: Bash\n")
     skill(tools.discovery.codex_home / "skills/legacy")
     skill(tools.discovery.bundled / "builtin")
-    (tools.workspace / ".agents/skills/alias").symlink_to(tools.workspace / ".agents/skills/example", target_is_directory=True)
+    (tools.workspace / ".agents/skills/alias").symlink_to(
+        tools.workspace / ".agents/skills/example", target_is_directory=True
+    )
     items = tools.skills()
     assert len(items) == 4
     assert len({s["id"] for s in items}) == 4
@@ -71,7 +87,12 @@ def test_skill_resources_and_boundaries(tools):
     root = tools.workspace / ".agents/skills/example"
     skill(root)
     write(root / "references/template.md", "Reference text")
-    assert tools.execute("read_skill_resource", {"skill_id":"example", "path":"references/template.md"}, "test")["content"] == "Reference text"
+    assert (
+        tools.execute(
+            "read_skill_resource", {"skill_id": "example", "path": "references/template.md"}, "test"
+        )["content"]
+        == "Reference text"
+    )
     with pytest.raises(ValueError):
         tools.discovery.resource("example", "../outside.txt")
     outside = tools.workspace / "secret.txt"
@@ -82,8 +103,11 @@ def test_skill_resources_and_boundaries(tools):
 
 
 def test_context_budget_and_extension_provider(tools):
-    run = {"id":"run", "conversation_id":"conv"}
-    provider = lambda config, run: {"name":"test_extension", "data":{"version":1}}
+    run = {"id": "run", "conversation_id": "conv"}
+
+    def provider(config, run):
+        return {"name": "test_extension", "data": {"version": 1}}
+
     messages, manifest = ContextBuilder(tools, providers=[provider]).build({}, run, [], [])
     assert "test_extension" in messages[0]["content"]
     assert manifest["sections"][0]["name"] == "test_extension"

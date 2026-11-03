@@ -6,19 +6,21 @@ import os
 import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Header
+from fastapi import FastAPI, File, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from .store import Store, uid, now
-from .tools import Tools, DEFINITIONS
-from .runtime import Runtime
+
 from . import schemas as api
+from .runtime import Runtime
+from .store import Store, now, uid
+from .tools import DEFINITIONS, Tools
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
@@ -30,16 +32,16 @@ class ConversationInput(BaseModel):
 
 class MessageInput(BaseModel):
     content: str = Field(min_length=1, max_length=30000)
-    skill_id: Optional[str] = None
+    skill_id: str | None = None
     file_ids: list[str] = Field(default_factory=list, max_length=10)
 
 
 class SettingsInput(BaseModel):
     base_url: str = Field(max_length=500)
     model: str = Field(max_length=200)
-    api_key: Optional[str] = Field(default=None, max_length=4000)
-    timezone: Optional[str] = Field(default=None, max_length=100)
-    instruction_mode: Optional[Literal["auto", "codex", "claude"]] = None
+    api_key: str | None = Field(default=None, max_length=4000)
+    timezone: str | None = Field(default=None, max_length=100)
+    instruction_mode: Literal["auto", "codex", "claude"] | None = None
 
 
 def create_app(data_dir=None):
@@ -52,15 +54,29 @@ def create_app(data_dir=None):
 
     def settings():
         if config_path.exists():
-            return {"timezone": "Asia/Shanghai", "instruction_mode": "auto", **json.loads(config_path.read_text())}
-        return {"timezone": "Asia/Shanghai", "instruction_mode": "auto", "base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"), "model": os.getenv("MODEL_NAME", ""), "api_key": os.getenv("MODEL_API_KEY", "")}
+            return {
+                "timezone": "Asia/Shanghai",
+                "instruction_mode": "auto",
+                **json.loads(config_path.read_text()),
+            }
+        return {
+            "timezone": "Asia/Shanghai",
+            "instruction_mode": "auto",
+            "base_url": os.getenv("MODEL_BASE_URL", "https://api.openai.com/v1"),
+            "model": os.getenv("MODEL_NAME", ""),
+            "api_key": os.getenv("MODEL_API_KEY", ""),
+        }
 
     runtime = Runtime(store, tools, settings)
 
     @asynccontextmanager
     async def lifespan(app):
         for run in store.rows("SELECT id FROM runs WHERE status IN ('queued','running')"):
-            store.status(run["id"], "failed", "服务重启导致执行中断，请重新提交；首版不会自动重放有副作用的工具")
+            store.status(
+                run["id"],
+                "failed",
+                "服务重启导致执行中断，请重新提交；首版不会自动重放有副作用的工具",
+            )
             store.event(run["id"], "run.failed", {"error": "服务重启，执行中断"})
         yield
         tasks = list(runtime.tasks.values())
@@ -70,28 +86,72 @@ def create_app(data_dir=None):
 
     app = FastAPI(title="Personal Agent API", version="0.1.0", lifespan=lifespan)
     app.state.store, app.state.runtime = store, runtime
-    app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"], allow_methods=["GET", "POST", "PUT"], allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+        allow_methods=["GET", "POST", "PUT"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "Last-Event-ID"],
+    )
 
     @app.middleware("http")
     async def security(request, call_next):
         if request.url.path.startswith("/api/"):
             origin = request.headers.get("origin")
-            allowed = {"http://127.0.0.1:5173", "http://localhost:5173", str(request.base_url).rstrip("/")}
+            allowed = {
+                "http://127.0.0.1:5173",
+                "http://localhost:5173",
+                str(request.base_url).rstrip("/"),
+            }
             if origin and origin not in allowed:
-                return JSONResponse({"error": {"code": "origin_forbidden", "message": "Origin not allowed"}}, status_code=403)
+                return JSONResponse(
+                    {"error": {"code": "origin_forbidden", "message": "Origin not allowed"}},
+                    status_code=403,
+                )
             token = os.getenv("AGENT_API_TOKEN", "")
-            if token and request.method != "OPTIONS" and not hmac.compare_digest(request.headers.get("authorization", ""), "Bearer " + token):
-                return JSONResponse({"error": {"code": "unauthorized", "message": "API token required"}}, status_code=401)
-            if not token and request.client and request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient"):
-                return JSONResponse({"error": {"code": "token_required", "message": "Remote access requires AGENT_API_TOKEN"}}, status_code=403)
+            if (
+                token
+                and request.method != "OPTIONS"
+                and not hmac.compare_digest(
+                    request.headers.get("authorization", ""), "Bearer " + token
+                )
+            ):
+                return JSONResponse(
+                    {"error": {"code": "unauthorized", "message": "API token required"}},
+                    status_code=401,
+                )
+            if (
+                not token
+                and request.client
+                and request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient")
+            ):
+                return JSONResponse(
+                    {
+                        "error": {
+                            "code": "token_required",
+                            "message": "Remote access requires AGENT_API_TOKEN",
+                        }
+                    },
+                    status_code=403,
+                )
             # Block DNS rebinding against an unauthenticated loopback server.
-            if not token and request.url.hostname not in ("127.0.0.1", "localhost", "::1", "testserver"):
-                return JSONResponse({"error": {"code": "host_forbidden", "message": "Loopback host required"}}, status_code=403)
+            if not token and request.url.hostname not in (
+                "127.0.0.1",
+                "localhost",
+                "::1",
+                "testserver",
+            ):
+                return JSONResponse(
+                    {"error": {"code": "host_forbidden", "message": "Loopback host required"}},
+                    status_code=403,
+                )
         return await call_next(request)
 
     @app.exception_handler(HTTPException)
     async def http_error(request, exc):
-        return JSONResponse({"error": {"code": "http_" + str(exc.status_code), "message": str(exc.detail)}}, status_code=exc.status_code)
+        return JSONResponse(
+            {"error": {"code": "http_" + str(exc.status_code), "message": str(exc.detail)}},
+            status_code=exc.status_code,
+        )
 
     def require(table, item_id):
         row = store.one("SELECT * FROM " + table + " WHERE id=?", (item_id,))
@@ -109,12 +169,22 @@ def create_app(data_dir=None):
     @app.get("/api/v1/settings", response_model=api.Settings)
     async def get_settings():
         config = settings()
-        return {k: config[k] for k in ("base_url", "model", "timezone", "instruction_mode")} | {"has_api_key": bool(config.get("api_key")), "workspace_path": str(tools.workspace)}
+        return {k: config[k] for k in ("base_url", "model", "timezone", "instruction_mode")} | {
+            "has_api_key": bool(config.get("api_key")),
+            "workspace_path": str(tools.workspace),
+        }
 
     @app.put("/api/v1/settings", response_model=api.Settings)
     async def put_settings(body: SettingsInput):
         url = urlparse(body.base_url)
-        if url.scheme not in ("http", "https") or not url.hostname or url.username or url.password or url.query or url.fragment:
+        if (
+            url.scheme not in ("http", "https")
+            or not url.hostname
+            or url.username
+            or url.password
+            or url.query
+            or url.fragment
+        ):
             raise HTTPException(422, "模型地址必须为不含凭证、查询参数的 HTTP(S) URL")
         if url.scheme == "http" and url.hostname not in ("localhost", "127.0.0.1", "::1"):
             raise HTTPException(422, "远程模型服务必须使用 HTTPS")
@@ -126,9 +196,11 @@ def create_app(data_dir=None):
         try:
             ZoneInfo(value["timezone"])
         except (ZoneInfoNotFoundError, ValueError):
-            raise HTTPException(422, "无效时区，请填写 Asia/Shanghai 等 IANA 时区")
+            raise HTTPException(422, "无效时区，请填写 Asia/Shanghai 等 IANA 时区") from None
         if body.api_key is None:
-            if body.base_url.rstrip("/") != previous["base_url"].rstrip("/") and previous.get("api_key"):
+            if body.base_url.rstrip("/") != previous["base_url"].rstrip("/") and previous.get(
+                "api_key"
+            ):
                 raise HTTPException(422, "更换模型地址时请重新输入密钥，避免将旧密钥发送给新服务")
             value["api_key"] = previous.get("api_key", "")
         if not body.model.strip():
@@ -153,10 +225,18 @@ def create_app(data_dir=None):
     @app.get("/api/v1/conversations/{cid}/messages", response_model=api.Messages)
     async def messages(cid: str):
         require("conversations", cid)
-        return {"items": store.rows("SELECT * FROM messages WHERE conversation_id=? ORDER BY rowid", (cid,))}
+        return {
+            "items": store.rows(
+                "SELECT * FROM messages WHERE conversation_id=? ORDER BY rowid", (cid,)
+            )
+        }
 
     @app.post("/api/v1/conversations/{cid}/messages", status_code=202, response_model=api.Run)
-    async def send_message(cid: str, body: MessageInput, idempotency_key: Optional[str] = Header(default=None, max_length=200)):
+    async def send_message(
+        cid: str,
+        body: MessageInput,
+        idempotency_key: str | None = Header(default=None, max_length=200),
+    ):
         require("conversations", cid)
         digest = hashlib.sha256((cid + body.model_dump_json()).encode()).hexdigest()
         if idempotency_key:
@@ -176,23 +256,54 @@ def create_app(data_dir=None):
         rid, timestamp = uid("run"), now()
         try:
             with store.connect() as db:
-                db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)", (rid, cid, "queued", body.skill_id, json.dumps(body.file_ids), None, timestamp, timestamp, idempotency_key, digest))
-                db.execute("INSERT INTO messages VALUES (?,?,?,?,?,?)", (uid("msg"), cid, "user", body.content, rid, timestamp))
-                db.execute("UPDATE conversations SET title=? WHERE id=? AND title='新对话'", (body.content[:32], cid))
+                db.execute(
+                    "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        rid,
+                        cid,
+                        "queued",
+                        body.skill_id,
+                        json.dumps(body.file_ids),
+                        None,
+                        timestamp,
+                        timestamp,
+                        idempotency_key,
+                        digest,
+                    ),
+                )
+                db.execute(
+                    "INSERT INTO messages VALUES (?,?,?,?,?,?)",
+                    (uid("msg"), cid, "user", body.content, rid, timestamp),
+                )
+                db.execute(
+                    "UPDATE conversations SET title=? WHERE id=? AND title='新对话'",
+                    (body.content[:32], cid),
+                )
         except sqlite3.IntegrityError:
-            raise HTTPException(409, "Conversation already has an active run")
+            raise HTTPException(409, "Conversation already has an active run") from None
         runtime.launch(rid)
         return public_run(require("runs", rid))
 
     @app.get("/api/v1/runs", response_model=api.Runs)
-    async def runs(conversation_id: Optional[str] = None):
-        rows = store.rows("SELECT * FROM runs WHERE conversation_id=? ORDER BY created_at DESC LIMIT 100", (conversation_id,)) if conversation_id else store.rows("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100")
+    async def runs(conversation_id: str | None = None):
+        rows = (
+            store.rows(
+                "SELECT * FROM runs WHERE conversation_id=? ORDER BY created_at DESC LIMIT 100",
+                (conversation_id,),
+            )
+            if conversation_id
+            else store.rows("SELECT * FROM runs ORDER BY created_at DESC LIMIT 100")
+        )
         return {"items": [public_run(row) for row in rows]}
 
     @app.get("/api/v1/runs/{rid}/context", response_model=api.ContextManifest)
     async def run_context(rid: str):
         require("runs", rid)
-        event = store.one("SELECT data FROM events WHERE run_id=? AND type='context.built' ORDER BY sequence DESC LIMIT 1", (rid,))
+        event = store.one(
+            "SELECT data FROM events WHERE run_id=? AND type='context.built' "
+            "ORDER BY sequence DESC LIMIT 1",
+            (rid,),
+        )
         if not event:
             raise HTTPException(404, "此任务暂无上下文记录")
         return json.loads(event["data"])
@@ -201,7 +312,12 @@ def create_app(data_dir=None):
     async def discovery():
         skills = tools.skills()
         rules, warnings = tools.discovery.instructions(settings()["instruction_mode"])
-        return {"workspace_path": str(tools.workspace), "instructions": [{k: r[k] for k in ("scope", "path", "sha256")} for r in rules], "skills": skills, "warnings": warnings + tools.discovery.warnings}
+        return {
+            "workspace_path": str(tools.workspace),
+            "instructions": [{k: r[k] for k in ("scope", "path", "sha256")} for r in rules],
+            "skills": skills,
+            "warnings": warnings + tools.discovery.warnings,
+        }
 
     @app.get("/api/v1/runs/{rid}", response_model=api.Run)
     async def run(rid: str):
@@ -222,10 +338,17 @@ def create_app(data_dir=None):
         return public_run(require("runs", rid))
 
     @app.get("/api/v1/runs/{rid}/events")
-    async def events(rid: str, request: Request, after: int = 0, last_event_id: Optional[str] = Header(default=None)):
+    async def events(
+        rid: str,
+        request: Request,
+        after: int = 0,
+        last_event_id: str | None = Header(default=None),
+    ):
         require("runs", rid)
         if last_event_id:
-            event = store.one("SELECT sequence FROM events WHERE id=? AND run_id=?", (last_event_id, rid))
+            event = store.one(
+                "SELECT sequence FROM events WHERE id=? AND run_id=?", (last_event_id, rid)
+            )
             if not event:
                 raise HTTPException(400, "Invalid event cursor")
             after = event["sequence"]
@@ -236,7 +359,13 @@ def create_app(data_dir=None):
             while not await request.is_disconnected():
                 batch = store.events(rid, cursor)
                 for event in batch:
-                    yield "id: " + event["id"] + "\ndata: " + json.dumps(event, ensure_ascii=False) + "\n\n"
+                    yield (
+                        "id: "
+                        + event["id"]
+                        + "\ndata: "
+                        + json.dumps(event, ensure_ascii=False)
+                        + "\n\n"
+                    )
                     cursor = event["sequence"]
                 if not batch and require("runs", rid)["status"] not in ("queued", "running"):
                     break
@@ -244,7 +373,12 @@ def create_app(data_dir=None):
                 if ticks % 40 == 0:
                     yield ": keepalive\n\n"
                 await asyncio.sleep(0.25)
-        return StreamingResponse(stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @app.get("/api/v1/skills", response_model=api.Skills)
     async def skills():
@@ -255,7 +389,7 @@ def create_app(data_dir=None):
         try:
             return tools.skill(skill_id)
         except ValueError:
-            raise HTTPException(404, "Unknown skill")
+            raise HTTPException(404, "Unknown skill") from None
 
     @app.get("/api/v1/tools", response_model=api.ToolList)
     async def tool_definitions():
@@ -269,7 +403,9 @@ def create_app(data_dir=None):
         try:
             content.decode("utf-8")
         except UnicodeError:
-            raise HTTPException(422, "首版支持 UTF-8 文本和 Markdown；暂不支持 PDF、Word 或图片")
+            raise HTTPException(
+                422, "首版支持 UTF-8 文本和 Markdown；暂不支持 PDF、Word 或图片"
+            ) from None
         file_id = uid("file")
         name = Path(file.filename or "document.txt").name[:180]
         if Path(name).suffix.lower() not in (".md", ".txt", ".csv", ".json", ".log"):
@@ -278,17 +414,31 @@ def create_app(data_dir=None):
         path = tools.path(relative)
         path.parent.mkdir(parents=True)
         path.write_bytes(content)
-        store.execute("INSERT INTO files VALUES (?,?,?,?,?,?,?)", (file_id, name, relative, "upload", None, len(content), now()))
+        store.execute(
+            "INSERT INTO files VALUES (?,?,?,?,?,?,?)",
+            (file_id, name, relative, "upload", None, len(content), now()),
+        )
         return require("files", file_id)
 
     @app.get("/api/v1/artifacts", response_model=api.Files)
-    async def artifacts(run_id: Optional[str] = None):
-        return {"items": store.rows("SELECT * FROM files WHERE kind='artifact' AND run_id=? ORDER BY created_at DESC", (run_id,)) if run_id else store.rows("SELECT * FROM files WHERE kind='artifact' ORDER BY created_at DESC LIMIT 100")}
+    async def artifacts(run_id: str | None = None):
+        return {
+            "items": store.rows(
+                "SELECT * FROM files WHERE kind='artifact' AND run_id=? ORDER BY created_at DESC",
+                (run_id,),
+            )
+            if run_id
+            else store.rows(
+                "SELECT * FROM files WHERE kind='artifact' ORDER BY created_at DESC LIMIT 100"
+            )
+        }
 
     @app.get("/api/v1/files/{fid}/content")
     async def file_content(fid: str):
         file = require("files", fid)
-        return FileResponse(tools.path(file["path"]), filename=file["name"], media_type="text/plain; charset=utf-8")
+        return FileResponse(
+            tools.path(file["path"]), filename=file["name"], media_type="text/plain; charset=utf-8"
+        )
 
     dist = ROOT / "frontend" / "dist"
     if dist.exists():

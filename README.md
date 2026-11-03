@@ -4,15 +4,17 @@
 
 ## 开发环境
 
-- Python 3.9+（当前开发机为 3.9；新环境建议使用较新的受支持版本）
+- [uv](https://docs.astral.sh/uv/)（自动安装并管理 Python 3.12）
 - Node.js 22.12+
+- GNU Make（macOS 自带）
 
 ```sh
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.lock
-npm ci
-npm run build
+make install                     # uv sync --frozen + npm ci，生成 .venv/
+make build                       # 构建 Web
+uv run pre-commit install        # 可选：提交前自动格式化与检查
 ```
+
+`make help` 列出全部命令。提交前运行 `make check`（lint、类型检查、测试、契约一致性），CI 执行同一命令。
 
 启动：双击 `scripts/start.command`，或在项目目录执行：
 
@@ -22,7 +24,7 @@ npm run build
 
 打开 http://127.0.0.1:8000 。在「设置与模型」配置 Base URL、模型名称和 API 密钥后即可直接使用。已有配置会自动沿用。兼容端点须支持 Chat Completions 流式输出和 function tools。保存设置不等于服务连通测试，首次发送消息会实际验证服务。
 
-开发热更新：后端按上面的命令启动，另一个终端运行 `npm run dev`，访问 http://127.0.0.1:5173 。
+开发热更新：`make dev` 启动带自动重载的后端，另一个终端运行 `npm run dev`，访问 http://127.0.0.1:5173 。
 
 ## 首次验收
 
@@ -62,9 +64,8 @@ npm run build
 - 路线图（学习主题 S0～S8）：`docs/roadmap.md`
 
 ```sh
-npm run sdk:generate
-npm run build
-.venv/bin/python -m pytest -q
+make gen     # 修改 API 后重新生成 docs/openapi.json 与 sdk/src/schema.d.ts
+make check   # 提交前检查
 ```
 
 SDK 以配置 Base URL 的方式供 Web 和未来自建桌面端复用；接入 OpenAI 官方 Codex 应用需另核实官方扩展能力，本项目不保证该集成。
