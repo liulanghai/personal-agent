@@ -59,7 +59,7 @@ npm run build
 - TypeScript SDK：`sdk/src/index.ts`
 - 架构：`docs/architecture.md`
 - 上下文、规则与 Skill 目录：`docs/context.md`
-- 路线图：`docs/roadmap.md`
+- 路线图（学习主题 S0～S8）：`docs/roadmap.md`
 
 ```sh
 npm run sdk:generate
@@ -69,6 +69,15 @@ npm run build
 
 SDK 以配置 Base URL 的方式供 Web 和未来自建桌面端复用；接入 OpenAI 官方 Codex 应用需另核实官方扩展能力，本项目不保证该集成。
 
-## Git 工作方式
+## 开发方式
 
-当前仓库为本地 `main` 分支，未创建远程仓库。代码、文档、Skill、SDK、OpenAPI、依赖锁文件和测试全部提交。修改 API 后重新生成契约与类型；提交前运行上述检查。不提交用户资料、密钥、数据库、日志和构建缓存。
+本项目以学习 Agent 开发为首要目的，按学习主题推进，每个功能经过「需求 → 调研 → 方案 → 实现 → 验证 → 学习总结」六个阶段，关键关卡由作者确认后才进入实现。
+
+- AI 协作规则：`AGENTS.md`（Codex 与 Claude Code 共用；`CLAUDE.md` 导入它）
+- 开发流程：`docs/process.md`
+- 开发规范：`docs/conventions.md`
+- 测试策略：`docs/testing.md`
+- 主题文档：`docs/features/`（模板 `TEMPLATE.md`）
+- 学习总结索引：`docs/learning/README.md`
+
+仓库托管于 GitHub（`liulanghai/personal-agent`），通过 PR 合入 `main`。代码、文档、Skill、SDK、OpenAPI、依赖锁文件和测试全部提交。修改 API 后重新生成契约与类型；提交前运行上述检查。不提交用户资料、密钥、数据库、日志和构建缓存。
