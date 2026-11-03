@@ -43,7 +43,7 @@ def test_timezone_midnight_and_manifest_without_secrets(tools):
     env = manifest["sections"][0]["environment"]
     assert env["current_date"] == "2026-11-03" and env["weekday"] == "星期二"
     assert env["current_datetime"].endswith("+08:00")
-    assert "never-in-context" not in json.dumps([messages, manifest])
+    assert "never-in-context" not in json.dumps([[m.content for m in messages], manifest])
     _, other = builder.build({"timezone": "America/Los_Angeles"}, run, [], [])
     assert other["sections"][0]["environment"]["current_date"] == "2026-11-02"
 
@@ -109,7 +109,7 @@ def test_context_budget_and_extension_provider(tools):
         return {"name": "test_extension", "data": {"version": 1}}
 
     messages, manifest = ContextBuilder(tools, providers=[provider]).build({}, run, [], [])
-    assert "test_extension" in messages[0]["content"]
+    assert "test_extension" in (messages[0].content or "")
     assert manifest["sections"][0]["name"] == "test_extension"
     with pytest.raises(ValueError, match="长度预算"):
         ContextBuilder(tools, max_chars=10).build({}, run, [], [])

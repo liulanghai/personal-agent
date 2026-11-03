@@ -10,6 +10,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..config import Settings
+from ..providers.base import Message
 from ..store import FileRow, HistoryItem
 from ..tools.registry import Tools
 
@@ -80,7 +81,7 @@ class ContextBuilder:
         run: RunInfo,
         files: Sequence[FileRow],
         history: Sequence[HistoryItem],
-    ) -> tuple[list[dict[str, Any]], Manifest]:
+    ) -> tuple[list[Message], Manifest]:
         base = (
             "You are a personal agent. "
             "Reply in the user's language. "
@@ -98,17 +99,17 @@ class ContextBuilder:
         )
         blocks: list[str] = [base]
         manifest: list[dict[str, Any]] = []
-        instruction_messages: list[dict[str, Any]] = []
+        instruction_messages: list[Message] = []
         for provider in self.providers:
             section = provider(config, run)
             text = json.dumps(section["data"], ensure_ascii=False)
             if section["name"] == "instructions":
                 instruction_messages.extend(
-                    {
-                        "role": "user",
-                        "content": "# Scoped user instructions\n"
+                    Message(
+                        role="user",
+                        content="# Scoped user instructions\n"
                         + json.dumps(rule, ensure_ascii=False),
-                    }
+                    )
                     for rule in section["data"]
                 )
             else:
@@ -139,12 +140,12 @@ class ContextBuilder:
             )
         )
         prompt = "".join(blocks)
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": prompt},
+        messages: list[Message] = [
+            Message(role="system", content=prompt),
             *instruction_messages,
-            *(dict(item) for item in history),
+            *(Message(role=item["role"], content=item["content"]) for item in history),
         ]
-        total = sum(len(m["content"] or "") for m in messages)
+        total = sum(len(m.content or "") for m in messages)
         if total > self.max_chars:
             raise ValueError(
                 "上下文超过长度预算，请缩小规则、技能目录或会话范围；未静默裁剪关键要求"

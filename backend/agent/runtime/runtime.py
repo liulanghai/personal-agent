@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 from ..config import Settings
 from ..context.builder import ContextBuilder
+from ..providers.base import ProviderFactory
 from ..store import ACTIVE_STATUSES, FileRow, Store
 from ..tools.registry import Tools
 from .loop import AgentLoop
@@ -17,13 +18,19 @@ INTERRUPTED_ERROR = "服务重启导致执行中断，请重新提交；首版�
 
 
 class Runtime:
-    def __init__(self, store: Store, tools: Tools, settings: Callable[[], Settings]) -> None:
+    def __init__(
+        self,
+        store: Store,
+        tools: Tools,
+        settings: Callable[[], Settings],
+        provider_factory: ProviderFactory,
+    ) -> None:
         self.store = store
         self.tools = tools
         self.settings = settings
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self.context = ContextBuilder(tools)
-        self.loop = AgentLoop(store, tools, settings, self.context)
+        self.loop = AgentLoop(store, tools, settings, self.context, provider_factory)
 
     def recover_interrupted(self) -> None:
         """Mark runs left active by a previous process as failed.

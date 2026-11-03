@@ -376,8 +376,8 @@ frontend/src/
 | PR | 分支 | 内容 | 状态 |
 | --- | --- | --- | --- |
 | PR1 | #3 | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 已合并 2026-11-03 |
-| PR2 | `refactor/s0-backend-split` | 后端模块拆分 | 评审中 |
-| PR3 | | Provider 最小抽象 | 未开始 |
+| PR2 | #4 | 后端模块拆分 | 已合并 2026-11-03 |
+| PR3 | `refactor/s0-provider` | Provider 最小抽象 | 评审中 |
 | PR4 | | 前端拆分 | 未开始 |
 
 PR1 实现说明与偏离：
@@ -401,6 +401,17 @@ PR2 实现说明与偏离：
 - 测试改动仅限路径：`agent.runtime.httpx.AsyncClient → agent.runtime.loop.httpx.AsyncClient`，`agent.context / agent.tools` 的 import 改为子模块；断言未改。新增 `tests/test_tools.py`（5 项）：`search_files` 大小写不敏感的字面匹配与行号、跳过非 UTF-8/超限文件/符号链接、50 条上限与 400 字截断、空查询被 schema 拒绝；`read_file` 超限。
 - **OpenAPI 与 SDK 有顺序差异、无语义差异**：路由按模块注册后 `/api/v1/discovery` 在 paths 中的位置从 `/runs/{rid}/context` 之后移到 `/runs/{rid}/events` 之后。已验证：新旧 `openapi.json` 解析后 `==` 为真；两份生成文件新旧版本的行集合（排序后）完全相同。按 `check-gen` 规则提交重新生成的文件。与 ③ 中"OpenAPI 零差异"的表述有出入，在 PR 中说明。
 
+PR3 实现说明与偏离：
+
+- 按 ③ 新增 `providers/base.py`、`providers/openai_chat.py`、`tests/support/scripted_provider.py`；`loop.py` 不再 import httpx。
+- **`Provider` 协议比 ③ 多一个 `aclose()`**：`httpx.AsyncClient` 由 Provider 持有，Run 结束时在 `finally` 中关闭，避免连接泄漏。
+- **`stream()` 返回 `AsyncGenerator` 而非 `AsyncIterator`**：Runtime 用 `contextlib.aclosing` 包裹，取消或异常时确定性地关闭底层 HTTP 流。
+- `OpenAIChatProvider` 增加可选 `transport` 构造参数，仅用于测试注入 `MockTransport`；生产路径经 `from_settings(settings)` 创建。
+- 错误信息保持原文：HTTP ≥ 400 为"模型服务返回 HTTP {code}，请检查设置、模型权限或额度"；网络异常为"执行失败（{异常类名}），请检查模型连接或本地文件"。分类只读取响应体前 4096 字节用于识别 `context_length_exceeded`，响应体不进入错误消息、事件或日志。新增 408 → `network`（可重试）。
+- 行为保持：不跟随重定向（307 不报错、无内容，与重构前一致，由循环报"模型没有返回可显示的内容"）；非法工具参数 JSON 仍回给模型；不发送 `stream_options`；不重试；Usage / Finish 不持久化。
+- `pyproject.toml` 的 pytest `pythonpath` 增加 `tests`，以便 `from support.scripted_provider import ...`。
+- 测试：API 集成测试改用 `ScriptedProviderFactory`，假模型根据工具结果反应，不再拆 prompt；附件路径改为断言 ScriptedProvider 收到的 system 消息。保留 2 个 `OpenAIChatProvider + MockTransport` 端到端用例（流式 + 工具执行、401 失败且不泄露响应体）。新增 `tests/providers/test_openai_chat.py`（③ 列出的全部样本 + 请求结构、重定向）与 `tests/test_loop.py`（非法参数、工具失败、多步文本拼接、步数上限、空回合、ProviderError 转为 Run 失败且关闭 Provider）。
+
 ## ⑤ 验证与评测
 
 PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
@@ -419,5 +430,12 @@ PR2（2026-11-03，本机）：
 - 路由与 Runtime 中无 SQL：`grep -rE "SELECT|INSERT|UPDATE |DELETE "` 除 `store.py` 外无结果。
 - 真实进程冒烟：`uvicorn agent.app:create_app --factory` 启动，`/api/v1/health` 返回 ok，`/api/v1/settings` 字段不变，恶意 Origin 返回 403。
 - 未验证：浏览器验收主线（仍留待 S0 结束时统一进行）。
+
+PR3（2026-11-03，本机）：
+
+- `make check` 退出码 0：ruff、ruff format、mypy strict、tsc、pytest 52 项通过、契约一致性通过（OpenAPI / SDK 无变化）。
+- 覆盖率总计 93% → 94%；`providers/openai_chat.py` 95%，`runtime/loop.py` 100%。
+- 测试中不存在真实网络调用（conftest 传输层拦截仍生效）；`sk-test-leak` 样本在错误消息与 Run 事件中均不出现。
+- 未验证：真实模型下的周报主线（留待 S0 结束时统一进行）。
 
 ## ⑥ 学习总结（用户执笔）

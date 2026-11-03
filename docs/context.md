@@ -2,7 +2,7 @@
 
 ## 模块边界
 
-- `backend/agent/context/builder.py`：ContextBuilder，在每个 Run 的首次模型调用前构建上下文。
+- `backend/agent/context/builder.py`：ContextBuilder，在每个 Run 的首次模型调用前构建上下文；输出中立的 `list[Message]`（`providers/base.py`）与 manifest，由 Provider 负责映射为具体厂商格式。
 - `backend/agent/context/discovery.py`：发现约定位置的规则和 Skill；不执行脚本。
 - `backend/agent/runtime/loop.py`：调用构建器，持久化 `context.built` 事件，再执行模型/工具循环。
 - `backend/agent/tools/`：参数校验（`registry.py`）与文件边界（`paths.py`，唯一的路径校验实现，Skill 资源也经由它）仍由工具层执行，规则文件不能增加权限。

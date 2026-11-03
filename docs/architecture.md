@@ -23,7 +23,10 @@ backend/agent/
     routes/           system · settings · conversations · runs · skills · files（APIRouter）
   runtime/
     runtime.py        Run 生命周期：launch / execute / cancel / 启动时中断恢复 / 关闭
-    loop.py           Agent 循环：模型流式调用、工具调用、步数上限
+    loop.py           Agent 循环：消费 Provider 事件、执行工具调用、步数上限
+  providers/
+    base.py           中立类型（Message / ToolCall / StreamEvent）、ProviderError、Provider 协议
+    openai_chat.py    OpenAIChatProvider：消息映射、SSE 解析、工具参数分片拼接、错误分类
   tools/
     registry.py       工具定义（JSON Schema）、参数校验、分发；Tools 门面
     paths.py          工作空间边界：唯一的路径校验实现
@@ -34,7 +37,9 @@ backend/agent/
     discovery.py      规则与 Skill 发现
 ```
 
-依赖方向：`api → runtime → context/tools → store`；路由与 Runtime 不拼写 SQL，路径校验只经由 `tools/paths.py`。所有模块均通过 mypy strict。
+依赖方向：`api → runtime → providers/context/tools → store`；路由与 Runtime 不拼写 SQL，路径校验只经由 `tools/paths.py`。所有模块均通过 mypy strict。
+
+Runtime 只认识 `providers.base` 中的中立类型，不接触 HTTP、SSE 或厂商 JSON。Provider 由 `create_app(provider_factory=...)` 注入（默认 `openai_chat.from_settings`），每个 Run 开始时按当次设置创建一个，Run 结束时 `aclose()`；执行中不切换。Provider 错误统一为 `ProviderError(kind, retryable)`，其消息面向用户，不包含响应体。
 
 ## HTTP
 
