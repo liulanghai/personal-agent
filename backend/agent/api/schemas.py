@@ -1,8 +1,34 @@
-"""Public response contracts shared with generated desktop/web clients."""
+"""Public request/response contracts shared with generated desktop/web clients.
+
+Changing anything here changes docs/openapi.json and the SDK: run `make gen`.
+"""
 
 from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# -- requests ---------------------------------------------------------------
+
+
+class ConversationInput(BaseModel):
+    title: str = Field(default="新对话", min_length=1, max_length=120)
+
+
+class MessageInput(BaseModel):
+    content: str = Field(min_length=1, max_length=30000)
+    skill_id: str | None = None
+    file_ids: list[str] = Field(default_factory=list, max_length=10)
+
+
+class SettingsInput(BaseModel):
+    base_url: str = Field(max_length=500)
+    model: str = Field(max_length=200)
+    api_key: str | None = Field(default=None, max_length=4000)
+    timezone: str | None = Field(default=None, max_length=100)
+    instruction_mode: Literal["auto", "codex", "claude"] | None = None
+
+
+# -- responses --------------------------------------------------------------
 
 
 class Conversation(BaseModel):

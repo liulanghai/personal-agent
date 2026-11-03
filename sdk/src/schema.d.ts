@@ -109,23 +109,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/discovery": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Discovery */
-        get: operations["discovery_api_v1_discovery_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/runs/{rid}": {
         parameters: {
             query?: never;
@@ -169,6 +152,23 @@ export interface paths {
         };
         /** Events */
         get: operations["events_api_v1_runs__rid__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Discovery */
+        get: operations["discovery_api_v1_discovery_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -790,26 +790,6 @@ export interface operations {
             };
         };
     };
-    discovery_api_v1_discovery_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DiscoveryResult"];
-                };
-            };
-        };
-    };
     run_api_v1_runs__rid__get: {
         parameters: {
             query?: never;
@@ -903,6 +883,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    discovery_api_v1_discovery_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiscoveryResult"];
                 };
             };
         };

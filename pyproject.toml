@@ -65,20 +65,3 @@ mypy_path = "backend"
 packages = ["agent"]
 strict = true
 warn_unused_ignores = true
-
-# Legacy modules written before S0. Remove a module from this list once it is
-# rewritten with full type annotations (see docs/features/s0-foundation.md).
-[[tool.mypy.overrides]]
-module = [
-    "agent.app",
-    "agent.context",
-    "agent.discovery",
-    "agent.runtime",
-    "agent.store",
-    "agent.tools",
-]
-disallow_untyped_defs = false
-disallow_incomplete_defs = false
-disallow_untyped_calls = false
-check_untyped_defs = true
-warn_return_any = false

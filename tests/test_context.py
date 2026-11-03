@@ -3,9 +3,9 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agent.context import ContextBuilder
+from agent.context.builder import ContextBuilder
 from agent.store import Store
-from agent.tools import Tools
+from agent.tools.registry import Tools
 
 
 @pytest.fixture

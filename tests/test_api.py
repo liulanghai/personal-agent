@@ -50,7 +50,7 @@ def app(tmp_path, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "agent.runtime.httpx.AsyncClient",
+        "agent.runtime.loop.httpx.AsyncClient",
         lambda **kwargs: ORIGINAL_ASYNC_CLIENT(transport=httpx.MockTransport(provider), **kwargs),
     )
     app = create_app(tmp_path)
@@ -249,7 +249,7 @@ def test_compatible_model_stream_and_tool_execution(client, monkeypatch):
         )
 
     monkeypatch.setattr(
-        "agent.runtime.httpx.AsyncClient",
+        "agent.runtime.loop.httpx.AsyncClient",
         lambda **kwargs: real_client(transport=httpx.MockTransport(mock), **kwargs),
     )
     client.put(
