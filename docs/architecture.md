@@ -51,11 +51,13 @@ frontend/src/
   hooks/
     useConversation   当前会话及其 messages / runs / artifacts（唯一所有者）；isCurrent 丢弃迟到响应
     useRunEvents      最新 Run 的 SSE 订阅：Last-Event-ID 续传、连续失败上限；只持有 events / live
-  lib/                纯函数：事件归并（events）、文案与状态（labels）、下载（download）
+  lib/                纯函数：事件归并（events）、按 Run 分轮次（turns）、文案与状态（labels）、下载（download）
   components/         展示组件，数据与回调由 props 传入，不直接调用 SDK（SettingsPanel、TaskPanel 例外：各自加载页面数据）
 ```
 
 数据流：`useRunEvents` 不修改消息或 Run，而是通过 `onRunStarted` / `onSettled` / `onDisconnected` 回调交给 `useConversation`。事件订阅只在 Run 或会话变化时重启；Run 对象的字段更新（如状态变为 running）不会触发重订阅。
+
+对话按轮次（一个 Run 一轮，以消息与产物的 `run_id` 分组）展示：提问 → 执行过程（第一行为上下文清单，完成后折叠）→ 回复 → 产物。只有最新一轮有执行过程，因为前端只订阅最新 Run 的事件。
 
 ## HTTP
 

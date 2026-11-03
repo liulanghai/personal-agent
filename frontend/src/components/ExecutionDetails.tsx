@@ -1,15 +1,17 @@
-import { Activity, Check, LoaderCircle } from 'lucide-react';
+import { Activity, Check, LoaderCircle, ScrollText } from 'lucide-react';
 import type { ToolStep } from '../lib/events';
 
 const STEP_LABELS = { running: '执行中', succeeded: '完成', failed: '失败' } as const;
 
 interface ExecutionDetailsProps {
   steps: ToolStep[];
+  /** The run's context manifest; shown as the first step once it has been built. */
+  manifest: Record<string, unknown> | undefined;
   open: boolean;
   statusLabel: string;
 }
 
-export function ExecutionDetails({ steps, open, statusLabel }: ExecutionDetailsProps) {
+export function ExecutionDetails({ steps, manifest, open, statusLabel }: ExecutionDetailsProps) {
   return (
     <details className="execution" open={open}>
       <summary>
@@ -17,6 +19,16 @@ export function ExecutionDetails({ steps, open, statusLabel }: ExecutionDetailsP
         执行过程 · {steps.length} 次工具调用
         <span>{statusLabel}</span>
       </summary>
+      {manifest && (
+        <details className="tool-row">
+          <summary>
+            <ScrollText size={14} />
+            构建上下文
+            <span>规则、Skill 与环境</span>
+          </summary>
+          <pre>{JSON.stringify(manifest, null, 2)}</pre>
+        </details>
+      )}
       {steps.map((step) => (
         <details key={step.id} className="tool-row">
           <summary>

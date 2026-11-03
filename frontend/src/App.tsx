@@ -156,13 +156,6 @@ export function App() {
     if (suggestion.upload) uploadRef.current?.click();
   }
 
-  function showContext(manifest: Record<string, unknown>) {
-    setPreview({
-      title: '本次上下文清单',
-      content: '```json\n' + JSON.stringify(manifest, null, 2) + '\n```',
-    });
-  }
-
   const title =
     conversations.find((c) => c.id === conversation.conversationId)?.title || '新的开始';
 
@@ -233,7 +226,6 @@ export function App() {
               onCancel: cancelRun,
             }}
             onSuggest={suggest}
-            onShowContext={showContext}
             onPreviewArtifact={previewFile}
             onDownloadArtifact={(f) => void download(f)}
             onOpenSettings={() => setPage('settings')}

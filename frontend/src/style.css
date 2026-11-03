@@ -605,6 +605,8 @@ header svg {
 }
 .artifact-list {
   margin-left: 44px;
+  /* Artifacts close a turn; keep the same gap as between messages. */
+  margin-bottom: 30px;
   display: grid;
   gap: 10px;
 }
@@ -1153,10 +1155,4 @@ header svg {
   color: #829373;
   font-size: 11px;
   overflow-wrap: anywhere;
-}
-.context-button {
-  margin: 0 0 20px 44px;
-  color: #6b855b;
-  font-size: 11px;
-  text-decoration: underline;
 }
