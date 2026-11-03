@@ -2,7 +2,7 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 状态 | ② 业界调研 |
+| 状态 | ③ 技术方案（待 G3 确认） |
 | 关联 | 路线图 S0 |
 | 开始日期 | 2026-11-03 |
 
@@ -11,7 +11,7 @@
 | 关卡 | 日期 | 结论 | 备注 |
 | --- | --- | --- | --- |
 | G1 需求确认 | 2026-11-03 | 通过 | 采纳草案目标/非目标/验收标准；5 个待讨论问题按下方「G1 决议」 |
-| G2 调研讨论 | | | |
+| G2 调研讨论 | 2026-11-03 | 通过 | 采纳「启发」表；CLAUDE.md 保留导入；mypy 新模块 strict、旧代码按模块放宽；覆盖率只统计；替身以 ScriptedProvider 为主 + 少量 HTTP 层协议测试；错误抛异常 |
 | G3 方案确认 | | | |
 
 已确认的前置决策（2026-11-03）：S0 先于所有新功能；Python 升级到 3.12；主题按 S0 → S1 → S2 → S3 顺序推进；每个主题一份文档。
@@ -157,9 +157,219 @@
 4. 测试替身层次：Provider 层 `ScriptedProvider` 为主，保留少量 HTTP 层测试覆盖 Chat 协议解析——是否认同？
 5. 错误处理：Error 作为异常抛出（pydantic-ai/codex 风格）还是作为流事件 yield？
 
-## ③ 技术方案
+## ③ 技术方案（草案，待 G3 确认）
 
-（G2 后开始）
+### 总原则
+
+- **行为不变**：S0 不改 API、事件、数据库结构、提示词与模型请求内容。证据：现有测试全部通过 + `docs/openapi.json` 零差异（由 `make check-gen` 强制）。
+- 4 个 PR 顺序合入，每个 PR 合入后 `make check` 与验收主线都可用。
+- 纯格式化（ruff format / prettier）作为 PR 内单独提交，便于评审；该类提交不计入 400 行建议。
+
+### PR1 · 工具链 + CI
+
+**Python 环境（uv）**
+
+- `pyproject.toml`：`requires-python = ">=3.12"`；开发依赖放 `[dependency-groups] dev`（pytest、ruff、mypy、types-PyYAML、types-jsonschema、pre-commit）。
+- `[tool.uv] exclude-newer = "7 days"`；新增 `.python-version`（3.12）与 `uv.lock`，删除 `requirements.lock`。
+- 首次锁定**沿用 requirements.lock 中的现有版本**（3.12 不再需要的 backport 包除外），依赖升级另开 `chore` PR，避免与升级 Python 混在一起难以定位问题。
+- `uv sync` 仍生成 `.venv/`，`scripts/start.command` 与 README 启动命令无需改变。
+
+**静态检查**
+
+- ruff：`line-length = 100`，`select = ["E","W","F","I","B","C4","ASYNC","UP"]`，`target-version = "py312"`。
+- mypy：全局 `strict = true`、`warn_unused_ignores = true`；现有模块列入 `[[tool.mypy.overrides]]` 放宽（`disallow_untyped_defs = false` 等）。**规则：PR2/PR3 重写到哪个模块，就从放宽名单中移除哪个**，S0 结束时名单为空或仅剩说明了原因的条目。
+
+**统一入口 `Makefile`**
+
+| 目标 | 内容 |
+| --- | --- |
+| `make install` | `uv sync --frozen` + `npm ci` |
+| `make fmt` | `ruff format` + `ruff check --fix`（PR4 起加 prettier） |
+| `make lint` | `ruff check` + `ruff format --check`（PR4 起加 eslint、prettier --check） |
+| `make typecheck` | `mypy backend` + `tsc --noEmit` |
+| `make test` | `pytest`（含覆盖率统计，不设门槛；PR4 起加 vitest） |
+| `make gen` | 导出 OpenAPI + 生成 SDK 类型（即现 `npm run sdk:generate`） |
+| `make check-gen` | `make gen` 后 `git diff --exit-code docs/openapi.json sdk/src/schema.d.ts` |
+| `make check` | `lint typecheck test check-gen` |
+| `make build` | 前端生产构建 |
+
+**测试默认禁止真实网络**
+
+`tests/conftest.py` 增加 autouse fixture：把 `httpx.AsyncHTTPTransport.handle_async_request` 替换为直接 `pytest.fail("Real network/model calls are not allowed in tests")`。`MockTransport` 不经过该类，现有测试不受影响；任何意外的真实请求立即失败。这一层与 Provider 无关，PR3 之后依然有效。（agents-python 在模型层拦截，我们在传输层拦截，覆盖面更广。）
+
+**pre-commit（轻量）**
+
+- 本地 hooks 调用 `uv run --frozen ruff …`，**与 uv.lock 同版本**，避免 pre-commit 自带 ruff 版本漂移。
+- 通用 hooks：check-yaml、check-toml、check-added-large-files、detect-private-key、end-of-file-fixer、trailing-whitespace。
+
+**CI（`.github/workflows/ci.yml`）**
+
+- 触发：`pull_request`、`push` 到 `main`；`permissions: contents: read`；同一分支新提交取消旧运行（concurrency）。
+- 单 job（ubuntu-latest，Python 3.12，Node 22）：checkout → setup-uv（启用缓存）→ setup-node（npm 缓存）→ `uv lock --check` → `make install` → `make check` → `make build`。
+- 所有 action 锁定到完整 commit SHA（实现时查最新发布版本的 SHA）。
+- 不做 Python 版本矩阵：本项目是应用而非库，只支持一个版本。
+
+**分支保护**
+
+- 要求 PR、要求 CI 通过、禁止强推。需在 GitHub 网页设置（本机未安装 `gh`）。
+- 风险：GitHub 免费账户的**私有仓库**不支持分支保护规则；若仓库为私有，需改用 pre-commit 的 `no-commit-to-branch` 作为本地兜底。实现前确认仓库可见性。
+
+**文档**：README 开发环境改为 uv；`AGENTS.md`、`docs/testing.md` 中的命令改为 `make check`。
+
+### PR2 · 后端模块拆分（纯重构）
+
+目标结构：
+
+```
+backend/agent/
+  app.py              create_app：只做组装（配置、存储、工具、Runtime、路由、静态文件）
+  config.py           Settings 读取/保存/校验（settings.json、环境变量、密钥保护规则）
+  security.py         Origin / Host / Bearer 中间件
+  store.py            SQLite；所有 SQL 只出现在这里，对外提供具名方法与 TypedDict 行类型
+  api/
+    errors.py         统一错误格式
+    schemas.py        请求/响应模型（含现 app.py 中的 Input 模型）
+    routes/           conversations.py · runs.py · files.py · settings.py · skills.py（APIRouter）
+  runtime/
+    runtime.py        Run 生命周期：launch / execute / cancel / 启动时中断恢复
+    loop.py           Agent 循环（PR2 暂保留 httpx，PR3 替换为 Provider）
+  tools/
+    registry.py       工具定义、参数校验、分发
+    paths.py          工作空间边界（唯一的路径校验实现）
+    files.py          list / read / search / write
+    skills.py         list_skills / read_skill / read_skill_resource
+  context/
+    builder.py        ContextBuilder
+    discovery.py      规则与 Skill 发现
+```
+
+- 路由内不再出现 SQL 字符串（如 `require(table, id)` 拼接表名改为具名方法）。
+- 删除未被调用的 `Runtime.text`。
+- 不处理 async 中的阻塞文件 IO（非目标，记入遗留问题）。
+- 测试只允许修改 import / monkeypatch 路径，不改断言；OpenAPI 零差异。
+
+### PR3 · Provider 最小抽象
+
+```
+backend/agent/providers/
+  base.py          中立类型与 Provider 协议
+  openai_chat.py   OpenAIChatProvider：消息映射、SSE 解析、工具参数拼接、错误分类
+tests/support/
+  scripted_provider.py   ScriptedProvider：按步骤 yield 事件的测试替身
+```
+
+接口（最终签名在实现 PR 中评审）：
+
+```python
+@dataclass(frozen=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: str          # 已拼接完整的原始 JSON 字符串，不在 provider 内解析
+
+@dataclass(frozen=True)
+class Message:              # 中立内部格式
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str | None = None
+    tool_calls: tuple[ToolCall, ...] = ()
+    tool_call_id: str | None = None
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    description: str
+    parameters: dict[str, Any]
+
+@dataclass(frozen=True)
+class TextDelta:
+    text: str
+
+@dataclass(frozen=True)
+class Usage:
+    input_tokens: int
+    output_tokens: int
+
+@dataclass(frozen=True)
+class Finish:
+    reason: Literal["stop", "tool_calls", "length", "content_filter", "other"]
+
+StreamEvent = TextDelta | ToolCall | Usage | Finish
+
+class ProviderError(Exception):
+    kind: Literal["auth", "rate_limit", "context_length", "bad_request", "server", "network", "other"]
+    retryable: bool
+
+class Provider(Protocol):
+    def stream(self, messages: Sequence[Message], tools: Sequence[ToolSpec], *,
+               model: str) -> AsyncIterator[StreamEvent]: ...
+```
+
+职责划分：
+
+| 归 Provider | 归 Runtime（loop.py） |
+| --- | --- |
+| 中立 Message ↔ Chat Completions 消息映射 | 循环与步数上限 |
+| SSE 解析、`[DONE]`、空 choices | 收到 `TextDelta` 写 `message.delta` 事件 |
+| 按 index 缓冲并拼接工具参数，流结束时按 index 顺序交出完整 `ToolCall` | 收到 `ToolCall` 后 `json.loads`；非法 JSON 作为工具错误回给模型（现有行为） |
+| HTTP 状态码 / 网络异常 → `ProviderError(kind, retryable)` | 捕获 `ProviderError` → Run 失败，错误信息与现在一致 |
+| 不持久化、不记录 provider 响应体（保持现有安全约束） | 工具执行、事件写入、历史追加 |
+
+- Runtime 通过构造参数 `provider_factory: Callable[[Settings], Provider]` 获得 Provider；`create_app(data_dir, provider_factory=None)` 默认使用 `OpenAIChatProvider`，测试注入 `ScriptedProvider`。任务开始时读配置、执行中不切换 provider 的规则不变。
+- **S0 不加重试**：`retryable` 只分类、不使用；重试属于 S1「错误恢复」主题。
+- **S0 不发送 `stream_options.include_usage`**：避免改变请求、不兼容部分兼容端点；返回中若含 usage 则解析为 `Usage` 事件，Runtime 暂不持久化（S2 处理）。
+- ContextBuilder 输出改为 `list[Message]`。
+
+测试：
+
+- `tests/providers/test_openai_chat.py`：真实格式的 SSE 样本——参数分多块到达、两个调用交错到达、仅文本、含 usage 的末块、空 choices、缺少 `[DONE]`、401/429/500/网络错误分类、非 JSON 参数原样交出。
+- API 集成测试改用 `ScriptedProvider`，删除拆 prompt 取附件列表的写法（附件改由 ScriptedProvider 记录收到的 messages 后断言）。
+- 保留 1～2 个经 `OpenAIChatProvider` + `MockTransport` 的端到端测试，覆盖 HTTP 层。
+
+### PR4 · 前端拆分
+
+- ESLint（flat config：typescript-eslint、react-hooks）+ Prettier；先单独提交全量格式化（含 `style.css` 现为单行 14KB）。
+- `main.tsx` 按职责拆分（具体切分在实现时阅读后于 PR 中说明）：
+
+```
+frontend/src/
+  main.tsx            挂载入口
+  App.tsx             布局与路由级状态
+  api/client.ts       AgentClient 单例
+  hooks/              useConversations · useRunEvents · useSettings …
+  components/         Sidebar · ChatView · MessageList · Composer · RunDetails · SettingsPanel · SkillsPanel · ArtifactPreview …
+  lib/events.ts       SSE 事件 → UI 状态的纯函数（可单测）
+```
+
+- 冒烟测试（Vitest + Testing Library + jsdom）：App 在 mock SDK 下可渲染；`lib/events.ts` 的事件归并纯函数单测。
+- 不改视觉与交互；手工复测验收主线。
+
+### 安全影响
+
+- 不放宽任何权限边界；工作空间路径校验集中到 `tools/paths.py`，现有越界与符号链接测试保留。
+- 测试新增真实网络拦截；CI 无任何密钥，`permissions: contents: read`；action 锁定 SHA。
+- detect-private-key hook 防止误提交密钥。
+
+### 测试计划
+
+- 每个 PR：`make check` 通过（CI）；OpenAPI 零差异。
+- PR3 新增 Provider 单元测试（见上）。
+- PR4 新增前端冒烟测试。
+- S0 结束：Python 3.12 下手工复测验收主线，真实模型发起一次周报任务，记录于 ⑤。
+
+### PR 拆分
+
+1. `chore(s0): uv + python 3.12 + ruff/mypy + pre-commit + CI + make check`
+2. `refactor(s0): split backend into api/runtime/tools/context modules`
+3. `refactor(s0): introduce minimal provider abstraction`
+4. `refactor(s0): split frontend, add eslint/prettier and smoke tests`
+
+### G3 待确认
+
+1. S0 不加重试、不发送 `stream_options`（保持行为不变，重试归 S1）。
+2. `ScriptedProvider` 放在 `tests/support/`，不随应用包发布（agents-python 随包发布是因为它是库）。
+3. PR2 顺带把所有 SQL 收进 `store.py`（略超"纯拆分"，但路由层不再有 SQL）。
+4. 首次 uv 锁定沿用现有依赖版本，依赖升级另开 PR。
+5. 分支保护：仓库是公开还是私有？（决定能否在 GitHub 上开启保护规则）
 
 ## ④ 实现记录
 
