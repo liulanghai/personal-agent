@@ -27,8 +27,9 @@ typecheck: ## Static type checks for backend and frontend
 	$(UV) mypy
 	npm run typecheck
 
-test: ## Run backend tests with coverage report
+test: ## Run backend tests (with coverage) and frontend tests
 	$(UV) pytest -q
+	npm test -w frontend
 
 gen: ## Regenerate OpenAPI contract and SDK types
 	$(UV) python scripts/export_openapi.py

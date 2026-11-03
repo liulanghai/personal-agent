@@ -388,8 +388,8 @@ frontend/src/
 | PR1 | #3 | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 已合并 2026-11-03 |
 | PR2 | #4 | 后端模块拆分 | 已合并 2026-11-03 |
 | PR3 | #5 | Provider 最小抽象 | 已合并 2026-11-03 |
-| PR4a | `chore/s0-frontend-lint` | ESLint + Prettier + 全量格式化 | 评审中 |
-| PR4b | | 前端拆分 + Vitest 冒烟测试 | 未开始 |
+| PR4a | #6 | ESLint + Prettier + 全量格式化 | 已合并 2026-11-03 |
+| PR4b | `refactor/s0-frontend-split` | 前端拆分 + Vitest 冒烟测试 | 评审中 |
 
 PR1 实现说明与偏离：
 
@@ -432,6 +432,36 @@ PR4a 实现说明与偏离：
 - react-hooks v7 的 recommended 包含 React Compiler 系列规则（如 `set-state-in-effect`），比 G3 时预期的规则集更多；PR4b 拆分时一并满足。
 - pre-commit 增加 prettier 与 eslint 本地 hook（`npx --no-install`，使用锁定版本）。`make fmt` / `make lint` 加入前端，CI 无需改动。
 
+PR4b 实现说明与偏离：
+
+- 最终结构（`main.tsx` 972 行 → 5 行挂载入口；最大文件 `App.tsx` 254 行）：
+
+```
+frontend/src/
+  main.tsx                 挂载入口
+  App.tsx                  页面切换、会话列表、草稿/附件/技能、发送与上传、预览
+  api/client.ts            AgentClient 单例（测试用 vi.mock 替换）
+  hooks/useConversation.ts 当前会话及其 messages / runs / artifacts 的唯一所有者
+  hooks/useRunEvents.ts    最新 Run 的 SSE 订阅：断线续传、重试上限；只持有 events / live
+  lib/events.ts            事件 → ToolStep[] / 上下文清单 / 是否终止（纯函数）
+  lib/labels.ts            状态文案、isActive、技能显示名、errorMessage
+  lib/download.ts          文本下载
+  components/              Sidebar · Header · ChatView · MessageList · ExecutionDetails ·
+                           ArtifactList · Composer · Welcome · SkillsPanel · TaskPanel ·
+                           SettingsPanel · PreviewModal
+```
+
+- **订阅 effect 未使用 `eslint-disable`，改用 React 19.2 的 `useEffectEvent`**（细化第 3 点的两种做法之一）：effect 依赖为 `[runId, conversationId]`，与原来的 `[run?.id, cid]` 相同；run 对象、handlers 通过 effect event 读取最新值，不触发重订阅。`exhaustive-deps` 无任何豁免。
+- **流状态在渲染期间按 `conversationId/runId` 重置**，而不是在 effect 中 `setEvents([])`（满足 `set-state-in-effect`）。原代码在 effect 开头清空，两者都在新订阅开始前清空；渲染期重置还避免了一帧旧事件。迟到的 `setState` 用 key 过滤，旧流的事件不会写入新流。
+- **切换会话的清空移入 `select()`**：原代码在 `cid` effect 里对 `null` 做清空（违反 `set-state-in-effect`），现在由 `select(id)` 同步完成，并同时更新 `isCurrent` 用的 ref（原代码每次渲染执行 `currentCid.current = cid`，现在只在 `select()` 中写 ref）。
+- **`useRunEvents` 不直接写消息**：通过 `onRunStarted` / `onSettled` / `onDisconnected` 回调交给 `useConversation`（细化第 4 点）。`onSettled` 返回最新 Run，替代原代码对 `r.items[0]` 的直接读取。
+- `MessageList` 用显式插槽 `beforeLive`（执行过程）/ `afterLive`（上下文按钮、错误、产物）保持原 DOM 顺序。`ToolStep.status` 用 `running | succeeded | failed` 替代原来对 `done` 与 `done.data.status` 的内联判断，文案不变。
+- 比 ③ 的结构多了 `lib/labels.ts`、`lib/download.ts`；少了 `useSettings`（设置只是一次加载 + 保存回写，抽 hook 没有收益）。
+- 错误文本统一经 `errorMessage(e)`，等价于原来的 `e.message`。
+- 测试依赖（`frontend/package.json`，精确版本，均发布超过两周）：`vitest` 4.1.12、`jsdom` 30.1.3、`@testing-library/react` 16.3.3、`@testing-library/dom` 10.4.2、`@testing-library/user-event` 14.6.8。
+- **锁文件用 npm 11 生成**：本机 npm 10.9.4 在解析 vitest 的可选 peer 依赖时崩溃（arborist `Cannot read properties of null (reading 'edgesOut')`），改用 `npx npm@11.6.2 install` 更新 `package-lock.json`；已验证 npm 10 的 `npm ci` 可正常安装该锁文件，CI 不受影响。
+- `make test` 增加 `npm test -w frontend`。
+
 ## ⑤ 验证与评测
 
 PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
@@ -464,12 +494,19 @@ PR4a（2026-11-03，本机）：
 - **构建产物对比**（格式化前后各 `vite build` 一次）：CSS 字节一致；`index.html` 仅换行缩进与 JS 文件名哈希不同；JS 包格式化后 diff 只有 2 处，都是 JSX 中文本末尾的空格被 Prettier 写成 `{' '}` 后，React 收到的子节点从 `"文本 "` 变为 `"文本", " "`，渲染出的 DOM 文本相同（"模型可能出错，请核实重要信息。 "、"模型服务地址 "）。
 - 未验证：浏览器手工复测（PR4b 后统一进行）。
 
+PR4b（2026-11-03，本机）：
+
+- `make check` 退出码 0：ESLint 无任何临时豁免（`TEMPORARY` 配置块已删除）、Prettier、mypy、tsc、pytest 52 项、Vitest 14 项、契约一致性。`make build` 通过。
+- Vitest：`lib/events.test.ts` 11 项（配对与开始顺序、失败状态、未完成为执行中、忽略无关事件、上下文清单、终止事件）；`App.test.tsx` 3 项，用 `vi.mock('./api/client')` 替换 SDK：欢迎页与模型名、进入设置页、打开会话并回放已完成 Run 的事件（执行过程、工具名、上下文按钮）。
+- 反例验证：把 `run` 对象临时加入订阅 effect 的依赖后，"打开会话"用例失败（刷新返回新的 run 对象导致重复订阅），还原后通过。说明该用例能守住"只在 Run 变化时重订阅"。
+- 未验证：浏览器手工复测验收主线与真实模型周报任务（S0 收尾时进行，结果补记于此）。
+
 ### 遗留问题
 
 阅读 `main.tsx` 时发现，**推测、未用测试复现**，PR4 不修，待专门的 fix PR：
 
 1. 设置页表单的初始值只在挂载时从 `settings` 读取一次；若设置尚未加载完成就进入设置页，会显示默认值，保存时可能覆盖已有的服务地址和模型。
 2. 执行记录页每 3 秒轮询 `runs.list()`，离开页面会清理，但请求失败时没有退避，错误会每 3 秒重复弹出。
-3. "查看本次上下文"取事件列表中第一个 `context.built`。复核：订阅 effect 在 `run.id` 变化时会 `setEvents([])`，正常情况下列表只含当前 Run 的事件，此条**大概率不成立**；PR4b 的 `lib/events.ts` 单测会顺带确认。
+3. "查看本次上下文"取事件列表中第一个 `context.built`。复核：订阅 effect 在 `run.id` 变化时会 `setEvents([])`，正常情况下列表只含当前 Run 的事件，此条**大概率不成立**。PR4b 后流状态按 `conversationId/runId` 重置，`events` 结构上只含当前 Run 的事件；`contextManifest` 的单测覆盖取值逻辑，但"多个 Run 的事件混在一起"的场景未构造测试。
 
 ## ⑥ 学习总结（用户执笔）
