@@ -1,7 +1,8 @@
 """SQLite is the authoritative store; events are replayable independently of clients."""
+
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 
@@ -10,7 +11,7 @@ def uid(prefix):
 
 
 def now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Store:
@@ -47,13 +48,22 @@ class Store:
 
     def event(self, run_id, kind, data):
         event_id = uid("evt")
-        self.execute("INSERT INTO events(id,run_id,type,data,created_at) VALUES (?,?,?,?,?)", (event_id, run_id, kind, json.dumps(data, ensure_ascii=False), now()))
+        self.execute(
+            "INSERT INTO events(id,run_id,type,data,created_at) VALUES (?,?,?,?,?)",
+            (event_id, run_id, kind, json.dumps(data, ensure_ascii=False), now()),
+        )
 
     def events(self, run_id, after=0):
-        rows = self.rows("SELECT * FROM events WHERE run_id=? AND sequence>? ORDER BY sequence LIMIT 200", (run_id, after))
+        rows = self.rows(
+            "SELECT * FROM events WHERE run_id=? AND sequence>? ORDER BY sequence LIMIT 200",
+            (run_id, after),
+        )
         for row in rows:
             row["data"] = json.loads(row["data"])
         return rows
 
     def status(self, run_id, status, error=None):
-        self.execute("UPDATE runs SET status=?,error=?,updated_at=? WHERE id=?", (status, error, now(), run_id))
+        self.execute(
+            "UPDATE runs SET status=?,error=?,updated_at=? WHERE id=?",
+            (status, error, now(), run_id),
+        )
