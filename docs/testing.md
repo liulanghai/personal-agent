@@ -11,7 +11,7 @@ Agent 系统同时包含**确定性代码**（工具、存储、协议解析）�
 | 契约测试 | OpenAPI 与已提交版本一致；SDK 生成物一致；破坏性变更检测 | 无 | 每个 PR（CI） | S0 |
 | 录制回放 | 录制真实 provider 的流式响应（脱敏），回放验证解析兼容 | 录制数据 | 每个 PR（CI） | S0/S1 |
 | 安全测试 | 路径越界、符号链接、Origin/Host、密钥不回传、提示注入样例 | 假模型 | 每个 PR（CI） | 部分已有 |
-| 前端测试 | 关键组件与 hooks（Vitest + Testing Library） | 无 | 每个 PR（CI） | S0 |
+| 前端测试 | 事件归并纯函数；App 冒烟（mock SDK 下渲染、导航、回放事件流）（Vitest + Testing Library + jsdom） | 无 | 每个 PR（CI） | 已有 |
 | E2E | 验收主线（上传 → Skill → 产物 → 历史），Playwright | 假模型服务 | 合入前 / 每日 | S0 之后 |
 | **Agent 评测** | 标准任务集上的成功率、步数、token、费用、耗时 | **真实模型** | 手动 / 定时，结果入库对比 | S2 |
 
@@ -36,11 +36,18 @@ Agent 系统同时包含**确定性代码**（工具、存储、协议解析）�
 ## 命令
 
 ```sh
-make test        # pytest + 覆盖率报告（只统计，不设门槛；S0 基线 88%）
+make test        # pytest + 覆盖率报告（只统计，不设门槛），然后 Vitest
 make check       # lint + 类型检查 + 测试 + 契约一致性，CI 运行同一命令
 ```
 
 `tests/conftest.py` 的 autouse fixture 拦截真实 `httpx` 传输：任何测试一旦发出真实网络请求立即失败。
+
+## 前端测试
+
+- 配置：`frontend/vitest.config.ts`（jsdom），`src/test/setup.ts` 补 `scrollIntoView` 并在每个用例后 `cleanup()`。测试文件与源文件同目录，命名 `*.test.ts(x)`。
+- 前端只经由 `src/api/client.ts` 访问后端，测试用 `vi.mock('./api/client', ...)` 整体替换，不发真实请求。事件流用 async generator 回放脚本化事件。
+- 纯逻辑放进 `lib/`，用普通单测覆盖；组件与 hooks 通过 App 级用例按用户可见的文本和角色断言（Testing Library 的 `getByRole` / `findByText`），不断言内部状态。
+- 测试替身返回的对象要像真实服务端一样每次都是新对象：hooks 的依赖比较按引用进行，复用同一对象会掩盖重复订阅一类问题。
 
 ## 假模型：两层替身
 

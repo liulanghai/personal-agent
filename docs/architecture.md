@@ -41,6 +41,22 @@ backend/agent/
 
 Runtime 只认识 `providers.base` 中的中立类型，不接触 HTTP、SSE 或厂商 JSON。Provider 由 `create_app(provider_factory=...)` 注入（默认 `openai_chat.from_settings`），每个 Run 开始时按当次设置创建一个，Run 结束时 `aclose()`；执行中不切换。Provider 错误统一为 `ProviderError(kind, retryable)`，其消息面向用户，不包含响应体。
 
+## 前端模块
+
+```
+frontend/src/
+  main.tsx            挂载入口
+  App.tsx             页面切换与组装；草稿、附件、技能选择、发送、上传、预览
+  api/client.ts       AgentClient 单例：前端访问后端的唯一入口
+  hooks/
+    useConversation   当前会话及其 messages / runs / artifacts（唯一所有者）；isCurrent 丢弃迟到响应
+    useRunEvents      最新 Run 的 SSE 订阅：Last-Event-ID 续传、连续失败上限；只持有 events / live
+  lib/                纯函数：事件归并（events）、文案与状态（labels）、下载（download）
+  components/         展示组件，数据与回调由 props 传入，不直接调用 SDK（SettingsPanel、TaskPanel 例外：各自加载页面数据）
+```
+
+数据流：`useRunEvents` 不修改消息或 Run，而是通过 `onRunStarted` / `onSettled` / `onDisconnected` 回调交给 `useConversation`。事件订阅只在 Run 或会话变化时重启；Run 对象的字段更新（如状态变为 running）不会触发重订阅。
+
 ## HTTP
 
 路径统一为 `/api/v1`。创建会话返回 201；发送消息返回 202 和 Run。`Idempotency-Key` 保证同一请求重试返回同一 Run；相同 key 不同输入返回 409。发送超时但不确定是否成功时，客户端必须使用原 key 重试；首版 Web 出错后不会自动重试发送。
