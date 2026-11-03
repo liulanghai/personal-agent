@@ -1,59 +1,52 @@
-import asyncio
 import json
 import time
+from collections.abc import Sequence
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
 from agent.app import create_app
+from agent.providers.base import Message, StreamEvent
+from agent.providers.openai_chat import OpenAIChatProvider
+from agent.tools.registry import DEFINITIONS
+from support.scripted_provider import ScriptedProviderFactory, call, text_turn, tool_turn
 
-ORIGINAL_ASYNC_CLIENT = httpx.AsyncClient
+
+def weekly_report_agent(messages: Sequence[Message]) -> Sequence[StreamEvent]:
+    """A fake model that reacts to tool results, like a real one would.
+
+    Loads the skill, lists files, and if an upload exists reads it and writes
+    its content into a report. It never inspects the system prompt.
+    """
+    results = [json.loads(m.content or "null") for m in messages if m.role == "tool"]
+    plan = [call("read_skill", {"skill_id": "weekly-report"}), call("list_files")]
+    if len(results) >= 2:
+        uploads = [path for path in results[1] if path.startswith("uploads/")]
+        if uploads:
+            plan.append(call("read_file", {"path": uploads[0]}))
+            text = results[2].get("content", "") if len(results) >= 3 else ""
+            plan.append(call("write_file", {"path": "reports/test.md", "content": text}))
+    if len(results) < len(plan):
+        return tool_turn(plan[len(results)])
+    return text_turn("已完成测试任务")
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
+def factory():
+    # Delay keeps runs active long enough for cancel/idempotency tests.
+    return ScriptedProviderFactory([weekly_report_agent] * 8, delay=0.05)
+
+
+@pytest.fixture
+def app(tmp_path, monkeypatch, factory):
     monkeypatch.delenv("AGENT_API_TOKEN", raising=False)
-    # Mock the provider transport; application always follows the real model loop.
     (tmp_path / "settings.json").write_text(
         json.dumps(
             {"base_url": "https://model.example/v1", "model": "test-model", "api_key": "test-key"}
         )
     )
-
-    async def provider(request):
-        await asyncio.sleep(0.05)
-        messages = json.loads(request.content)["messages"]
-        files = json.loads(messages[0]["content"].split("Attached files for this request: ")[1])
-        step = sum(m["role"] == "tool" for m in messages)
-        plan = [("read_skill", {"skill_id": "weekly-report"}), ("list_files", {})]
-        if files:
-            plan.append(("read_file", {"path": files[0]["path"]}))
-            text = json.loads(messages[-1]["content"]).get("content", "") if step == 3 else ""
-            plan.append(("write_file", {"path": "reports/test.md", "content": text}))
-        if step < len(plan):
-            name, arguments = plan[step]
-            delta = {
-                "tool_calls": [
-                    {
-                        "index": 0,
-                        "id": "call_" + str(step),
-                        "function": {"name": name, "arguments": json.dumps(arguments)},
-                    }
-                ]
-            }
-        else:
-            delta = {"content": "已完成测试任务"}
-        return httpx.Response(
-            200,
-            content="data: " + json.dumps({"choices": [{"delta": delta}]}) + "\n\ndata: [DONE]\n\n",
-        )
-
-    monkeypatch.setattr(
-        "agent.runtime.loop.httpx.AsyncClient",
-        lambda **kwargs: ORIGINAL_ASYNC_CLIENT(transport=httpx.MockTransport(provider), **kwargs),
-    )
-    app = create_app(tmp_path)
+    app = create_app(tmp_path, provider_factory=factory)
     app.state.runtime.tools.discovery.home = tmp_path / "home"
     app.state.runtime.tools.discovery.codex_home = tmp_path / "home/.codex"
     return app
@@ -92,7 +85,7 @@ def read_events(client, rid, headers=None):
     ]
 
 
-def test_file_skill_artifact_history_and_replay(client):
+def test_file_skill_artifact_history_and_replay(client, factory):
     upload = client.post(
         "/api/v1/files",
         files={"file": ("notes.md", "已完成：API设计。风险：模型未配置。".encode())},
@@ -100,6 +93,10 @@ def test_file_skill_artifact_history_and_replay(client):
     assert upload.status_code == 201
     cid, run, _ = send(client, files=[upload.json()["id"]])
     assert wait(client, run["id"])["status"] == "completed"
+    system_prompt = factory.last.requests[0][0].content or ""
+    assert upload.json()["path"] in system_prompt.split("Attached files for this request: ")[1]
+    assert factory.last.models == ["test-model"] * 5
+    assert factory.last.closed
     events = read_events(client, run["id"])
     names = [e["data"]["tool_name"] for e in events if e["type"] == "tool_call.started"]
     assert names == ["read_skill", "list_files", "read_file", "write_file"]
@@ -222,52 +219,88 @@ def test_interrupted_run_marks_failure_after_restart(tmp_path):
         assert client.get("/api/v1/runs/run_old").json()["status"] == "failed"
 
 
-def test_compatible_model_stream_and_tool_execution(client, monkeypatch):
+def sse(*chunks):
+    lines = ["data: " + json.dumps(chunk) for chunk in chunks] + ["data: [DONE]"]
+    return httpx.Response(
+        200,
+        content="\n\n".join(lines) + "\n\n",
+        headers={"content-type": "text/event-stream"},
+    )
+
+
+def openai_app(tmp_path, monkeypatch, handler):
+    """App wired to the real OpenAIChatProvider over httpx.MockTransport."""
+    monkeypatch.delenv("AGENT_API_TOKEN", raising=False)
+
+    def factory(settings):
+        return OpenAIChatProvider(
+            base_url=settings["base_url"],
+            api_key=settings.get("api_key", ""),
+            transport=httpx.MockTransport(handler),
+        )
+
+    app = create_app(tmp_path, provider_factory=factory)
+    app.state.runtime.tools.discovery.home = tmp_path / "home"
+    app.state.runtime.tools.discovery.codex_home = tmp_path / "home/.codex"
+    return app
+
+
+def test_compatible_model_stream_and_tool_execution(tmp_path, monkeypatch):
     calls = []
-    real_client = ORIGINAL_ASYNC_CLIENT
 
     def mock(request):
         body = json.loads(request.content)
-        calls.append(body)
+        calls.append((request, body))
         if len(calls) == 1:
-            delta = {
-                "tool_calls": [
-                    {
-                        "index": 0,
-                        "id": "call_mock",
-                        "function": {"name": "list_skills", "arguments": "{}"},
-                    }
-                ]
-            }
-        else:
-            assert body["messages"][-1]["role"] == "tool"
-            delta = {"content": "真实协议模拟成功"}
-        return httpx.Response(
-            200,
-            content="data: " + json.dumps({"choices": [{"delta": delta}]}) + "\n\ndata: [DONE]\n\n",
-            headers={"content-type": "text/event-stream"},
+            # Arguments split across chunks, as real providers stream them.
+            first = {"index": 0, "id": "call_mock", "function": {"name": "list_skills"}}
+            second = {"index": 0, "function": {"arguments": "{}"}}
+            return sse(
+                {"choices": [{"delta": {"tool_calls": [first]}}]},
+                {"choices": [{"delta": {"tool_calls": [second]}}]},
+            )
+        assert body["messages"][-1]["role"] == "tool"
+        assert body["messages"][-1]["tool_call_id"] == "call_mock"
+        assert body["messages"][-2]["tool_calls"][0]["function"]["name"] == "list_skills"
+        return sse({"choices": [{"delta": {"content": "真实协议模拟成功"}}]})
+
+    with TestClient(openai_app(tmp_path, monkeypatch, mock)) as client:
+        client.put(
+            "/api/v1/settings",
+            json={
+                "mode": "compatible",
+                "base_url": "https://model.example/v1",
+                "model": "mock",
+                "api_key": "mock-key",
+            },
+        )
+        cid, run, _ = send(client)
+        assert wait(client, run["id"])["status"] == "completed"
+        assert len(calls) == 2
+        request, body = calls[0]
+        assert str(request.url) == "https://model.example/v1/chat/completions"
+        assert request.headers["authorization"] == "Bearer mock-key"
+        assert body["model"] == "mock" and body["stream"] is True
+        assert body["tools"] == DEFINITIONS
+        assert (
+            client.get(f"/api/v1/conversations/{cid}/messages").json()["items"][-1]["content"]
+            == "真实协议模拟成功"
         )
 
-    monkeypatch.setattr(
-        "agent.runtime.loop.httpx.AsyncClient",
-        lambda **kwargs: real_client(transport=httpx.MockTransport(mock), **kwargs),
+
+def test_provider_http_error_fails_run_without_leaking_body(tmp_path, monkeypatch):
+    def mock(request):
+        return httpx.Response(401, json={"error": {"message": "bad key sk-test-leak"}})
+
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"base_url": "https://model.example/v1", "model": "m", "api_key": "test-key"})
     )
-    client.put(
-        "/api/v1/settings",
-        json={
-            "mode": "compatible",
-            "base_url": "https://model.example/v1",
-            "model": "mock",
-            "api_key": "mock-key",
-        },
-    )
-    cid, run, _ = send(client)
-    assert wait(client, run["id"])["status"] == "completed"
-    assert len(calls) == 2
-    assert (
-        client.get(f"/api/v1/conversations/{cid}/messages").json()["items"][-1]["content"]
-        == "真实协议模拟成功"
-    )
+    with TestClient(openai_app(tmp_path, monkeypatch, mock)) as client:
+        _, run, _ = send(client)
+        result = wait(client, run["id"])
+        assert result["status"] == "failed"
+        assert result["error"] == "模型服务返回 HTTP 401，请检查设置、模型权限或额度"
+        assert "sk-test-leak" not in json.dumps(read_events(client, run["id"]))
 
 
 def test_legacy_mode_is_ignored_and_configuration_is_preserved(tmp_path):

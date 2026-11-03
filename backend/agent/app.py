@@ -18,6 +18,8 @@ from .api import errors
 from .api.deps import Services
 from .api.routes import conversations, files, runs, settings, skills, system
 from .config import SettingsStore
+from .providers import openai_chat
+from .providers.base import ProviderFactory
 from .runtime.runtime import Runtime
 from .store import Store
 from .tools.registry import Tools
@@ -28,14 +30,18 @@ load_dotenv(ROOT / ".env")
 API_PREFIX = "/api/v1"
 
 
-def create_app(data_dir: str | Path | None = None) -> FastAPI:
+def create_app(
+    data_dir: str | Path | None = None,
+    provider_factory: ProviderFactory | None = None,
+) -> FastAPI:
+    """Build the app. Tests inject ``provider_factory``; default is OpenAI Chat Completions."""
     data = Path(data_dir or os.getenv("AGENT_DATA_DIR") or ROOT / "data").resolve()
     data.mkdir(parents=True, exist_ok=True)
     os.chmod(data, 0o700)
     store = Store(data / "agent.sqlite")
     tools = Tools(os.getenv("AGENT_WORKSPACE", data / "workspace"), ROOT / "skills", store)
     config = SettingsStore(data / "settings.json")
-    runtime = Runtime(store, tools, config.load)
+    runtime = Runtime(store, tools, config.load, provider_factory or openai_chat.from_settings)
     services = Services(store=store, tools=tools, settings=config, runtime=runtime)
 
     @asynccontextmanager
