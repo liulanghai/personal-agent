@@ -1,0 +1,11 @@
+# Prettier covers the TypeScript frontend, the SDK and JS config files only.
+# Generated files are owned by their generators (`make gen`); YAML, Markdown and
+# JSON are left as written.
+**/dist/
+**/node_modules/
+sdk/src/schema.d.ts
+docs/
+*.md
+*.json
+*.yml
+*.yaml

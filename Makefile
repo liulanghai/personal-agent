@@ -16,10 +16,12 @@ install: ## Install Python and Node dependencies from lock files
 fmt: ## Auto-format and apply safe lint fixes
 	$(UV) ruff format
 	$(UV) ruff check --fix
+	npm run fmt
 
 lint: ## Lint and check formatting (no changes)
 	$(UV) ruff check
 	$(UV) ruff format --check
+	npm run lint
 
 typecheck: ## Static type checks for backend and frontend
 	$(UV) mypy

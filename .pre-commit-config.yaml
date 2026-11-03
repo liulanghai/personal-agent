@@ -28,3 +28,13 @@ repos:
         entry: uv run --frozen ruff check --fix
         language: system
         types: [python]
+      - id: prettier
+        name: prettier
+        entry: npx --no-install prettier --write --ignore-unknown
+        language: system
+        files: ^(frontend|sdk)/|\.mjs$
+      - id: eslint
+        name: eslint
+        entry: npx --no-install eslint --fix
+        language: system
+        files: ^(frontend/src|sdk/src)/.*\.tsx?$

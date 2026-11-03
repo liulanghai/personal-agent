@@ -54,7 +54,7 @@
 - 测试中不得调用真实付费模型；使用脚本化假模型或录制回放。真实模型只用于 Agent 评测（手动/定时）。
 - 修改 API 后运行 `make gen`，并提交 `docs/openapi.json` 与 `sdk/src/schema.d.ts`。
 - 环境：`make install`（uv + npm，Python 3.12）。不要用 pip 直接安装依赖；增删依赖用 `uv add` / `uv remove` 并提交 `uv.lock`。
-- 提交前运行 `make check`（ruff、mypy、tsc、pytest、OpenAPI/SDK 生成物一致性），CI 执行同一命令；格式问题用 `make fmt` 修复。
+- 提交前运行 `make check`（ruff、ESLint、Prettier、mypy、tsc、pytest、OpenAPI/SDK 生成物一致性），CI 执行同一命令；格式问题用 `make fmt` 修复。
 - `make check` 失败时先修复再提交，不得跳过或删减检查；确需放宽规则须在方案中说明。
 
 - 如实报告：测试失败要贴出输出；跳过的步骤要说明；未验证的不得写成已验证。
