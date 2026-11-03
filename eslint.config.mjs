@@ -20,15 +20,4 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'error',
     },
   },
-  {
-    // TEMPORARY (S0 PR4a): the pre-split monolith has 6 known findings. PR4a only
-    // formats code, so they are suppressed here; PR4b splits main.tsx into hooks and
-    // components, fixes them and deletes this block.
-    files: ['frontend/src/main.tsx'],
-    rules: {
-      'react-hooks/exhaustive-deps': 'off',
-      'react-hooks/set-state-in-effect': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
-    },
-  },
 );
