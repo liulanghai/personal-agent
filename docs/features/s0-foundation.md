@@ -343,6 +343,16 @@ frontend/src/
 - 冒烟测试（Vitest + Testing Library + jsdom）：App 在 mock SDK 下可渲染；`lib/events.ts` 的事件归并纯函数单测。
 - 不改视觉与交互；手工复测验收主线。
 
+#### PR4 细化（2026-11-03 阅读 `main.tsx` 后确认）
+
+1. **拆为两个 PR**：全量格式化会让 `main.tsx` 191 → ~970 行、`style.css` 3 → ~1160 行，与拆分混在一起无法评审。
+   - PR4a `chore(s0)`：ESLint + Prettier 配置 + 全量格式化，纯机械变更，以构建产物对比验证。
+   - PR4b `refactor(s0)`：按上方结构拆分组件与 hooks + Vitest 冒烟测试。
+2. **Prettier**：`singleQuote`、`printWidth: 100`（与 ruff 一致）、保留分号。
+3. **`react-hooks/exhaustive-deps` 设为 error**：多数违规随拆分自然消除（函数移入 hook、`onError` 稳定引用）；事件订阅 effect 有意只在 `run.id` 变化时重订阅，保留原依赖并用 `eslint-disable-next-line` 注明原因，以保证行为不变。
+4. **`useRunEvents` 不直接修改消息状态**：流结束时调用 `onSettled()`，由 `useConversation.reload` 刷新，事件流 hook 保持独立（S1 的审批、错误恢复事件将落在这里）。
+5. 阅读中发现的疑似问题**只记录不修**（PR4 不改行为），见 ⑤ 末尾「遗留问题」。
+
 ### 安全影响
 
 - 不放宽任何权限边界；工作空间路径校验集中到 `tools/paths.py`，现有越界与符号链接测试保留。
@@ -361,7 +371,7 @@ frontend/src/
 1. `chore(s0): uv + python 3.12 + ruff/mypy + pre-commit + CI + make check`
 2. `refactor(s0): split backend into api/runtime/tools/context modules`
 3. `refactor(s0): introduce minimal provider abstraction`
-4. `refactor(s0): split frontend, add eslint/prettier and smoke tests`
+4. `refactor(s0): split frontend, add eslint/prettier and smoke tests`（细化后拆为 PR4a / PR4b，见上）
 
 ### G3 决议（2026-11-03，均已同意）
 
@@ -377,8 +387,9 @@ frontend/src/
 | --- | --- | --- | --- |
 | PR1 | #3 | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 已合并 2026-11-03 |
 | PR2 | #4 | 后端模块拆分 | 已合并 2026-11-03 |
-| PR3 | `refactor/s0-provider` | Provider 最小抽象 | 评审中 |
-| PR4 | | 前端拆分 | 未开始 |
+| PR3 | #5 | Provider 最小抽象 | 已合并 2026-11-03 |
+| PR4a | `chore/s0-frontend-lint` | ESLint + Prettier + 全量格式化 | 评审中 |
+| PR4b | | 前端拆分 + Vitest 冒烟测试 | 未开始 |
 
 PR1 实现说明与偏离：
 
@@ -412,6 +423,15 @@ PR3 实现说明与偏离：
 - `pyproject.toml` 的 pytest `pythonpath` 增加 `tests`，以便 `from support.scripted_provider import ...`。
 - 测试：API 集成测试改用 `ScriptedProviderFactory`，假模型根据工具结果反应，不再拆 prompt；附件路径改为断言 ScriptedProvider 收到的 system 消息。保留 2 个 `OpenAIChatProvider + MockTransport` 端到端用例（流式 + 工具执行、401 失败且不泄露响应体）。新增 `tests/providers/test_openai_chat.py`（③ 列出的全部样本 + 请求结构、重定向）与 `tests/test_loop.py`（非法参数、工具失败、多步文本拼接、步数上限、空回合、ProviderError 转为 Run 失败且关闭 Provider）。
 
+PR4a 实现说明与偏离：
+
+- devDependencies（根 `package.json`，精确版本，均发布超过两周）：`eslint` 10.13.0、`@eslint/js` 10.0.1、`typescript-eslint` 8.72.0、`eslint-plugin-react-hooks` 7.1.1、`prettier` 3.9.10、`globals` 17.13.0。运行时依赖不变。
+- 配置文件为 `eslint.config.mjs`（根包不是 ESM，`.js` 会触发 Node 的模块类型告警）。
+- **Prettier 范围比"全量"窄**：只覆盖 `frontend/`、`sdk/` 与 JS 配置；YAML（CI、pre-commit）、Markdown、JSON 不纳入，避免与本 PR 无关的改动。
+- **`main.tsx` 的 6 个已知 ESLint 违规在配置中临时关闭**（`exhaustive-deps` ×3、`set-state-in-effect` ×2、`no-unused-vars` ×1），带 `TEMPORARY` 注释；PR4b 修复后删除该配置块。PR4a 不改代码。
+- react-hooks v7 的 recommended 包含 React Compiler 系列规则（如 `set-state-in-effect`），比 G3 时预期的规则集更多；PR4b 拆分时一并满足。
+- pre-commit 增加 prettier 与 eslint 本地 hook（`npx --no-install`，使用锁定版本）。`make fmt` / `make lint` 加入前端，CI 无需改动。
+
 ## ⑤ 验证与评测
 
 PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
@@ -437,5 +457,19 @@ PR3（2026-11-03，本机）：
 - 覆盖率总计 93% → 94%；`providers/openai_chat.py` 95%，`runtime/loop.py` 100%。
 - 测试中不存在真实网络调用（conftest 传输层拦截仍生效）；`sk-test-leak` 样本在错误消息与 Run 事件中均不出现。
 - 未验证：真实模型下的周报主线（留待 S0 结束时统一进行）。
+
+PR4a（2026-11-03，本机）：
+
+- `make check` 退出码 0（新增 ESLint、`prettier --check`）；`make build` 通过。
+- **构建产物对比**（格式化前后各 `vite build` 一次）：CSS 字节一致；`index.html` 仅换行缩进与 JS 文件名哈希不同；JS 包格式化后 diff 只有 2 处，都是 JSX 中文本末尾的空格被 Prettier 写成 `{' '}` 后，React 收到的子节点从 `"文本 "` 变为 `"文本", " "`，渲染出的 DOM 文本相同（"模型可能出错，请核实重要信息。 "、"模型服务地址 "）。
+- 未验证：浏览器手工复测（PR4b 后统一进行）。
+
+### 遗留问题
+
+阅读 `main.tsx` 时发现，**推测、未用测试复现**，PR4 不修，待专门的 fix PR：
+
+1. 设置页表单的初始值只在挂载时从 `settings` 读取一次；若设置尚未加载完成就进入设置页，会显示默认值，保存时可能覆盖已有的服务地址和模型。
+2. 执行记录页每 3 秒轮询 `runs.list()`，离开页面会清理，但请求失败时没有退避，错误会每 3 秒重复弹出。
+3. "查看本次上下文"取事件列表中第一个 `context.built`。复核：订阅 effect 在 `run.id` 变化时会 `setEvents([])`，正常情况下列表只含当前 Run 的事件，此条**大概率不成立**；PR4b 的 `lib/events.ts` 单测会顺带确认。
 
 ## ⑥ 学习总结（用户执笔）

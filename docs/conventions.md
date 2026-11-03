@@ -50,14 +50,16 @@ backend/agent/
 
 ## TypeScript / 前端
 
-- `strict: true`；ESLint + Prettier（S0 落地）。
+- `strict: true`。
+- ESLint（`eslint.config.mjs`，flat config）：`@eslint/js` + `typescript-eslint` recommended；前端加 `react-hooks` recommended，且 `exhaustive-deps` 为 error。确需违反时用 `eslint-disable-next-line <规则>` 并在同一处注释写明原因。
+- Prettier（`.prettierrc.json`）：单引号、行宽 100、保留分号；范围为 `frontend/`、`sdk/` 与 JS 配置文件，生成文件 `sdk/src/schema.d.ts` 除外。`make fmt` / `make lint` 同时覆盖 Python 与前端。
 - 组件按职责拆分到 `components/`，数据获取与状态放在 `hooks/`；单文件建议 ≤ 300 行。
 - 前端只通过 SDK 访问后端，不手写 fetch。
 - 禁止 `any`，确需时使用 `unknown` 并收窄。
 
 ## 通用编码原则
 
-- **可读性优先**：本项目代码也是学习材料。禁止把多条语句压缩到一行；单行 ≤ 100 字符（Python）/ Prettier 默认（TS）。
+- **可读性优先**：本项目代码也是学习材料。禁止把多条语句压缩到一行；单行 ≤ 100 字符（Python 与 TS 一致）。
 - 标识符与代码注释使用英文；注释解释"为什么"，不复述代码。
 - 先写最简单可行的实现，抽象在出现第二个使用者时再提取。
 - 安全边界（文件路径、权限、外部调用）集中在一处实现并有测试，不在调用方各自判断。
