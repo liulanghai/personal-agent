@@ -4,7 +4,7 @@
 
 ## Git 与 PR
 
-- `main` 为受保护分支：禁止直接推送，只能通过 PR 合入，合并方式为 squash（S0 落地）。
+- `main` 为受保护分支：禁止直接推送与强推，只能通过 PR 合入；必需检查 `check` 通过且分支与 main 同步；仅允许 squash 合并，PR 标题即提交标题，合并后自动删除分支。
 - 分支命名：`feat/<编号>-<短名>`、`fix/<短名>`、`docs/<短名>`、`refactor/<短名>`、`chore/<短名>`。
 - 提交信息遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)：`feat:`、`fix:`、`docs:`、`refactor:`、`test:`、`chore:`、`ci:`。标题 ≤ 72 字符，正文说明"为什么"。
 - 一个 PR 只做一件事，建议 ≤ 400 行（不含 `docs/openapi.json`、`sdk/src/schema.d.ts`、锁文件等生成文件）。

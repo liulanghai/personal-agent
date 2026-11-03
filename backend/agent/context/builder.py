@@ -4,19 +4,40 @@ import hashlib
 import json
 import os
 import platform
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..config import Settings
+from ..store import FileRow, HistoryItem
+from ..tools.registry import Tools
+
+# A context provider returns {"name", "data", optional "warnings"} for one run.
+Section = dict[str, Any]
+RunInfo = dict[str, Any]
+SectionProvider = Callable[[Settings, RunInfo], Section]
+Manifest = dict[str, Any]
+
 
 class ContextBuilder:
-    def __init__(self, tools, providers=None, clock=None, max_chars=160000):
+    def __init__(
+        self,
+        tools: Tools,
+        providers: Sequence[SectionProvider] | None = None,
+        clock: Callable[[], datetime] | None = None,
+        max_chars: int = 160000,
+    ) -> None:
         self.tools = tools
         self.clock = clock or (lambda: datetime.now(UTC))
         self.max_chars = max_chars
-        self.providers = providers or [self.environment, self.instructions, self.capabilities]
+        self.providers: Sequence[SectionProvider] = providers or [
+            self.environment,
+            self.instructions,
+            self.capabilities,
+        ]
 
-    def environment(self, config, run):
+    def environment(self, config: Settings, run: RunInfo) -> Section:
         zone = config.get("timezone", "Asia/Shanghai")
         current = self.clock().astimezone(ZoneInfo(zone))
         return {
@@ -41,11 +62,11 @@ class ContextBuilder:
             },
         }
 
-    def instructions(self, config, run):
+    def instructions(self, config: Settings, run: RunInfo) -> Section:
         rules, warnings = self.tools.discovery.instructions(config.get("instruction_mode", "auto"))
         return {"name": "instructions", "data": rules, "warnings": warnings}
 
-    def capabilities(self, config, run):
+    def capabilities(self, config: Settings, run: RunInfo) -> Section:
         skills = self.tools.skills()
         return {
             "name": "capabilities",
@@ -53,7 +74,13 @@ class ContextBuilder:
             "warnings": list(self.tools.discovery.warnings),
         }
 
-    def build(self, config, run, files, history):
+    def build(
+        self,
+        config: Settings,
+        run: RunInfo,
+        files: Sequence[FileRow],
+        history: Sequence[HistoryItem],
+    ) -> tuple[list[dict[str, Any]], Manifest]:
         base = (
             "You are a personal agent. "
             "Reply in the user's language. "
@@ -88,7 +115,7 @@ class ContextBuilder:
                 blocks.append(
                     "\n<" + section["name"] + ">\n" + text + "\n</" + section["name"] + ">"
                 )
-            entry = {
+            entry: dict[str, Any] = {
                 "name": section["name"],
                 "characters": len(text),
                 "sha256": hashlib.sha256(text.encode()).hexdigest(),
@@ -112,7 +139,11 @@ class ContextBuilder:
             )
         )
         prompt = "".join(blocks)
-        messages = [{"role": "system", "content": prompt}] + instruction_messages + history
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": prompt},
+            *instruction_messages,
+            *(dict(item) for item in history),
+        ]
         total = sum(len(m["content"] or "") for m in messages)
         if total > self.max_chars:
             raise ValueError(

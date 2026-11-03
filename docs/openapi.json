@@ -319,24 +319,6 @@
         }
       }
     },
-    "/api/v1/discovery": {
-      "get": {
-        "summary": "Discovery",
-        "operationId": "discovery_api_v1_discovery_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DiscoveryResult"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/runs/{rid}": {
       "get": {
         "summary": "Run",
@@ -471,6 +453,24 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/discovery": {
+      "get": {
+        "summary": "Discovery",
+        "operationId": "discovery_api_v1_discovery_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryResult"
                 }
               }
             }

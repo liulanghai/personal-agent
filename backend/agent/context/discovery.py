@@ -4,21 +4,48 @@ import hashlib
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 import yaml
+
+from ..config import InstructionMode
+from ..tools.paths import resolve_inside
 
 LIMIT = 60000
 
 
-def text_file(path):
+class Rule(TypedDict):
+    scope: str
+    path: str
+    content: str
+    sha256: str
+
+
+class SkillInfo(TypedDict):
+    id: str
+    name: str
+    description: str
+    scope: str
+    source: str
+    path: str
+    directory: str
+    unsupported_fields: list[str]
+
+
+class SkillContent(SkillInfo):
+    content: str
+
+
+def text_file(path: Path) -> str:
     if path.stat().st_size > LIMIT:
         raise ValueError("Context file exceeds 60KB: " + str(path))
     return path.read_text(encoding="utf-8")
 
 
 class Discovery:
-    def __init__(self, workspace, bundled, home=None):
+    def __init__(
+        self, workspace: str | Path, bundled: str | Path, home: str | Path | None = None
+    ) -> None:
         self.workspace = Path(workspace).resolve()
         self.bundled = Path(bundled)
         self.home = Path(home) if home is not None else Path.home()
@@ -29,11 +56,11 @@ class Discovery:
         )
         self.warnings: list[str] = []
 
-    def instructions(self, mode="auto"):
+    def instructions(self, mode: InstructionMode = "auto") -> tuple[list[Rule], list[str]]:
         """One file per scope; auto prefers Codex names, reports alternatives."""
-        result: list[dict[str, Any]] = []
+        result: list[Rule] = []
         warnings: list[str] = []
-        scopes = [
+        scopes: list[tuple[str, list[Path], list[Path]]] = [
             (
                 "user",
                 [self.codex_home / "AGENTS.override.md", self.codex_home / "AGENTS.md"],
@@ -75,7 +102,7 @@ class Discovery:
                 )
         return result, warnings
 
-    def skills(self):
+    def skills(self) -> list[SkillInfo]:
         roots = [
             ("project", "agents", self.workspace / ".agents/skills"),
             ("project", "claude", self.workspace / ".claude/skills"),
@@ -84,7 +111,7 @@ class Discovery:
             ("user", "codex-legacy", self.codex_home / "skills"),
             ("builtin", "bundled", self.bundled),
         ]
-        result: list[dict[str, Any]] = []
+        result: list[SkillInfo] = []
         seen: set[Path] = set()
         warnings: list[str] = []
         for scope, source, root in roots:
@@ -146,16 +173,16 @@ class Discovery:
         self.warnings = warnings
         return result
 
-    def skill(self, skill_id):
+    def skill(self, skill_id: str) -> SkillContent:
         found = next((s for s in self.skills() if s["id"] == skill_id), None)
         if not found:
             raise ValueError("Unknown skill")
         return {**found, "content": text_file(Path(found["path"]))}
 
-    def resource(self, skill_id, relative_path):
+    def resource(self, skill_id: str, relative_path: str) -> dict[str, Any]:
         skill = self.skill(skill_id)
         directory = Path(skill["directory"])
-        path = (directory / relative_path).resolve()
-        if directory not in path.parents:
-            raise ValueError("Skill resource must stay inside its directory")
+        path = resolve_inside(
+            directory, relative_path, "Skill resource must stay inside its directory"
+        )
         return {"path": relative_path, "content": text_file(path)}
