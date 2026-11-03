@@ -35,7 +35,11 @@
 
 详见 [docs/conventions.md](docs/conventions.md)，要点：
 
-- Git：`main` 受保护，只通过 PR 合入（squash）。分支 `feat/<编号>-<名称>`、`fix/…`、`docs/…`、`refactor/…`。提交信息用 Conventional Commits。
+- Git：`main` 受保护（必需检查 `check`，仅允许 squash，合并后自动删除分支）。分支 `feat/<编号>-<名称>`、`fix/…`、`docs/…`、`refactor/…`。提交信息用 Conventional Commits。
+- GitHub 操作使用 `gh`：
+  - 可直接执行：查看 PR/CI 状态与日志、推送功能分支、创建或编辑 PR 描述。
+  - **合并 PR 仅在用户明确说「合并」后执行**，且 CI 必须通过；CI 失败一律不合并。
+  - 修改仓库设置、删除非本次合并产生的分支、强推共享分支，需先征得用户同意。
 - 单个 PR 只做一件事，建议 ≤ 400 行（不含生成文件）。
 - Python 3.12；ruff（lint + format，行宽 100）、mypy；新代码必须带类型注解。
 - TypeScript strict；ESLint + Prettier；组件按职责拆分。

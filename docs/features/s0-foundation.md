@@ -375,7 +375,7 @@ frontend/src/
 
 | PR | 分支 | 内容 | 状态 |
 | --- | --- | --- | --- |
-| PR1 | `feat/s0-toolchain` | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 待评审 |
+| PR1 | #3 | uv + Python 3.12、ruff/mypy、pre-commit、`make check`、CI、测试网络拦截 | 已合并 2026-11-03 |
 | PR2 | | 后端模块拆分 | 未开始 |
 | PR3 | | Provider 最小抽象 | 未开始 |
 | PR4 | | 前端拆分 | 未开始 |
@@ -397,6 +397,7 @@ PR1（2026-11-03，本机 macOS，Python 3.12.14、Node 22.22.0）：
 - 契约检查反例：临时修改 API 标题后 `make check-gen` 失败（退出码 2），还原后通过。
 - `make build` 通过。`pre-commit run --all-files` 通过（首次运行修复了 TEMPLATE.md 行尾空格）。
 - 覆盖率基线：总计 88%（app 88%、discovery 89%、runtime 86%、tools 70%）。
-- 未验证：GitHub Actions 实际运行结果（需推送后查看）；Python 3.12 下的浏览器验收主线手工复测（留待 S0 结束时统一进行）。
+- GitHub Actions 首次运行通过（27s）。仓库设置：`main` 必需检查 `check`（strict）、仅 squash、合并后删除分支。
+- 未验证：Python 3.12 下的浏览器验收主线手工复测（留待 S0 结束时统一进行）。
 
 ## ⑥ 学习总结（用户执笔）
