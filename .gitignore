@@ -10,3 +10,9 @@ __pycache__/
 data/
 *.log
 .DS_Store
+*.swp
+*.swo
+.coverage
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
