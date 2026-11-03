@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import Markdown from 'react-markdown';
-import type { Message } from '@personal-agent/sdk';
+import type { AgentFile, Message } from '@personal-agent/sdk';
+import type { Turn } from '../lib/turns';
+import { ArtifactList } from './ArtifactList';
 
 function MessageItem({ message }: { message: Message }) {
   const mine = message.role === 'user';
@@ -44,24 +46,46 @@ function LiveReply({ text }: { text: string }) {
 }
 
 interface MessageListProps {
-  messages: Message[];
-  /** Live assistant text; `null` when no run is active. */
+  turns: Turn[];
+  latestRunId: string | undefined;
+  /** Live assistant text of the latest run; `null` when no run is active. */
   live: string | null;
-  /** Rendered after the messages and before the live reply (execution details). */
-  beforeLive?: ReactNode;
-  /** Rendered after the live reply (context button, run error, artifacts). */
-  afterLive?: ReactNode;
+  /** Shown in the latest turn between the prompt and the reply (execution details). */
+  process?: ReactNode;
+  /** Shown in the latest turn after the reply (run error). */
+  outcome?: ReactNode;
+  onPreviewArtifact: (file: AgentFile) => void;
+  onDownloadArtifact: (file: AgentFile) => void;
 }
 
-export function MessageList({ messages, live, beforeLive, afterLive }: MessageListProps) {
+/** Each turn reads top to bottom: prompt → execution → reply → artifacts. */
+export function MessageList(props: MessageListProps) {
+  const { turns, latestRunId, live } = props;
   return (
     <div className="message-list">
-      {messages.map((m) => (
-        <MessageItem key={m.id} message={m} />
-      ))}
-      {beforeLive}
-      {live !== null && <LiveReply text={live} />}
-      {afterLive}
+      {turns.map((turn) => {
+        const latest = turn.runId === latestRunId;
+        return (
+          <Fragment key={turn.runId}>
+            {turn.prompts.map((m) => (
+              <MessageItem key={m.id} message={m} />
+            ))}
+            {latest && props.process}
+            {turn.replies.map((m) => (
+              <MessageItem key={m.id} message={m} />
+            ))}
+            {latest && live !== null && <LiveReply text={live} />}
+            {latest && props.outcome}
+            {turn.artifacts.length > 0 && (
+              <ArtifactList
+                artifacts={turn.artifacts}
+                onPreview={props.onPreviewArtifact}
+                onDownload={props.onDownloadArtifact}
+              />
+            )}
+          </Fragment>
+        );
+      })}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import type { AgentEvent, AgentFile, Message, Run } from '@personal-agent/sdk';
 import { contextManifest, toolSteps } from '../lib/events';
 import { isActive, STATUS_LABELS } from '../lib/labels';
-import { ArtifactList } from './ArtifactList';
+import { groupTurns } from '../lib/turns';
 import { Composer } from './Composer';
 import { ExecutionDetails } from './ExecutionDetails';
 import { MessageList } from './MessageList';
@@ -19,7 +19,6 @@ interface ChatViewProps {
   artifacts: AgentFile[];
   composer: Omit<ComposerProps, 'running'>;
   onSuggest: (suggestion: Suggestion) => void;
-  onShowContext: (manifest: Record<string, unknown>) => void;
   onPreviewArtifact: (file: AgentFile) => void;
   onDownloadArtifact: (file: AgentFile) => void;
   onOpenSettings: () => void;
@@ -45,34 +44,22 @@ export function ChatView(props: ChatViewProps) {
           <Welcome onSuggest={props.onSuggest} />
         ) : (
           <MessageList
-            messages={messages}
+            turns={groupTurns(messages, props.artifacts, run?.id)}
+            latestRunId={run?.id}
             live={running ? live : null}
-            beforeLive={
-              steps.length > 0 && (
+            process={
+              (steps.length > 0 || manifest) && (
                 <ExecutionDetails
                   steps={steps}
+                  manifest={manifest}
                   open={running}
                   statusLabel={run ? STATUS_LABELS[run.status] : ''}
                 />
               )
             }
-            afterLive={
-              <>
-                {manifest && (
-                  <button className="context-button" onClick={() => props.onShowContext(manifest)}>
-                    查看本次上下文与环境信息
-                  </button>
-                )}
-                {run?.error && <div className="run-error">{run.error}</div>}
-                {props.artifacts.length > 0 && (
-                  <ArtifactList
-                    artifacts={props.artifacts}
-                    onPreview={props.onPreviewArtifact}
-                    onDownload={props.onDownloadArtifact}
-                  />
-                )}
-              </>
-            }
+            outcome={run?.error && <div className="run-error">{run.error}</div>}
+            onPreviewArtifact={props.onPreviewArtifact}
+            onDownloadArtifact={props.onDownloadArtifact}
           />
         )}
         <div ref={bottom} />

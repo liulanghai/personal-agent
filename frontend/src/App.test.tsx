@@ -80,7 +80,7 @@ describe('App', () => {
     expect(await screen.findByText(/未发现规则文件/)).toBeTruthy();
   });
 
-  it('opens a conversation and replays its finished run', async () => {
+  it('opens a conversation and lays out its finished run in reading order', async () => {
     const messages = {
       items: [message('m1', 'user', '写周报'), message('m2', 'assistant', '周报已生成')],
     };
@@ -88,9 +88,22 @@ describe('App', () => {
     // A fresh object per call, like JSON from a real server: a refresh must not
     // look like a new run to the event subscription.
     client.runs.list.mockImplementation(async () => ({ items: [completedRun()] }));
+    client.files.artifacts.mockResolvedValue({
+      items: [
+        {
+          id: 'f1',
+          name: 'weekly.md',
+          path: 'reports/weekly.md',
+          kind: 'artifact',
+          run_id: 'r1',
+          size: 2048,
+          created_at: NOW,
+        },
+      ],
+    });
     client.runs.events.mockImplementation(() =>
       replay([
-        event('1', 'context.built', { instructions: [] }),
+        event('1', 'context.built', { instructions: ['AGENTS.md'] }),
         event('2', 'tool_call.started', { tool_call_id: 't1', tool_name: 'read_file' }),
         event('3', 'tool_call.completed', { tool_call_id: 't1', status: 'succeeded' }),
         event('4', 'run.completed'),
@@ -100,13 +113,31 @@ describe('App', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: '周报讨论' }));
 
-    expect(await screen.findByText('周报已生成')).toBeTruthy();
-    const execution = await screen.findByText(/执行过程 · 1 次工具调用/);
-    expect(within(execution).getByText('已完成')).toBeTruthy();
-    expect(screen.getByText('read_file')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '查看本次上下文与环境信息' })).toBeTruthy();
+    const reply = await screen.findByText('周报已生成');
+    const summary = await screen.findByText(/执行过程 · 1 次工具调用/);
+    const execution = summary.closest('details')!;
+    expect(within(summary).getByText('已完成')).toBeTruthy();
+    // Finished runs keep the execution collapsed.
+    expect(execution.open).toBe(false);
+    // The context manifest lives inside the execution, as its first step.
+    const steps = execution.querySelectorAll(':scope > details > summary');
+    expect(Array.from(steps, (s) => s.textContent)).toEqual([
+      expect.stringContaining('构建上下文'),
+      expect.stringContaining('read_file'),
+    ]);
+    expect(screen.queryByText('查看本次上下文与环境信息')).toBeNull();
+    // Reading order: prompt → execution → reply → artifacts.
+    const prompt = screen.getByText('写周报');
+    const artifact = await screen.findByText('weekly.md');
+    expect(isBefore(prompt, execution)).toBe(true);
+    expect(isBefore(execution, reply)).toBe(true);
+    expect(isBefore(reply, artifact)).toBe(true);
     // The stream is opened once per run, from the beginning.
     expect(client.runs.events).toHaveBeenCalledTimes(1);
     expect(client.runs.events.mock.calls[0].slice(0, 2)).toEqual(['r1', undefined]);
   });
 });
+
+function isBefore(a: Node, b: Node): boolean {
+  return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+}
