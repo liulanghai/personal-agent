@@ -6,8 +6,8 @@ Agent 系统同时包含**确定性代码**（工具、存储、协议解析）�
 
 | 层级 | 覆盖内容 | 模型 | 运行时机 | 状态 |
 | --- | --- | --- | --- | --- |
-| 单元测试 | 工具、路径边界、规则/Skill 发现、上下文构建、SSE/流式解析、配置 | 无 | 每个 PR（CI） | 部分已有 |
-| 集成测试 | HTTP API + Runtime 循环 + SQLite，脚本化假模型驱动多步工具调用 | 假模型（MockTransport） | 每个 PR（CI） | 已有 19 项 |
+| 单元测试 | 工具、路径边界、规则/Skill 发现、上下文构建、Provider SSE 解析与错误分类、Agent 循环、配置 | 无 / ScriptedProvider | 每个 PR（CI） | 部分已有 |
+| 集成测试 | HTTP API + Runtime 循环 + SQLite，脚本化假模型驱动多步工具调用 | ScriptedProvider；HTTP 层用 MockTransport | 每个 PR（CI） | 已有 |
 | 契约测试 | OpenAPI 与已提交版本一致；SDK 生成物一致；破坏性变更检测 | 无 | 每个 PR（CI） | S0 |
 | 录制回放 | 录制真实 provider 的流式响应（脱敏），回放验证解析兼容 | 录制数据 | 每个 PR（CI） | S0/S1 |
 | 安全测试 | 路径越界、符号链接、Origin/Host、密钥不回传、提示注入样例 | 假模型 | 每个 PR（CI） | 部分已有 |
@@ -40,4 +40,20 @@ make test        # pytest + 覆盖率报告（只统计，不设门槛；S0 基�
 make check       # lint + 类型检查 + 测试 + 契约一致性，CI 运行同一命令
 ```
 
-`tests/conftest.py` 的 autouse fixture 拦截真实 `httpx` 传输：任何测试一旦发出真实网络请求立即失败。需要模拟模型时使用 `httpx.MockTransport`（S0 PR3 起优先使用 `ScriptedProvider`）。
+`tests/conftest.py` 的 autouse fixture 拦截真实 `httpx` 传输：任何测试一旦发出真实网络请求立即失败。
+
+## 假模型：两层替身
+
+| 替身 | 位置 | 替换的是什么 | 用于 |
+| --- | --- | --- | --- |
+| `ScriptedProvider` / `ScriptedProviderFactory` | `tests/support/scripted_provider.py` | 整个 Provider（不经过 HTTP） | Runtime / API 行为：事件序列、工具执行、终止条件、发给模型的消息 |
+| `httpx.MockTransport` + 真实 `OpenAIChatProvider(transport=...)` | `tests/providers/test_openai_chat.py`、`test_api.py` 少量端到端用例 | 只替换网络 | 协议解析：SSE 分块、工具参数分片拼接、HTTP 错误分类、响应体不外泄 |
+
+`ScriptedProvider` 的每一步可以是固定事件序列（`text_turn`、`tool_turn(call(...))`），也可以是"看到的消息 → 事件"的函数，从而根据工具结果做反应而不必解析提示词。它记录每次请求的 `requests` / `tools` / `models` 与 `closed`，测试据此断言 Runtime 发出了什么。`pytest` 的 `pythonpath` 包含 `tests`，用 `from support.scripted_provider import ...` 导入。
+
+```python
+factory = ScriptedProviderFactory([tool_turn(call("list_files")), text_turn("完成")])
+app = create_app(tmp_path, provider_factory=factory)
+...
+assert factory.last.requests[1][-1].role == "tool"
+```
