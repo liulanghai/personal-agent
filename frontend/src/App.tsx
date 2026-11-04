@@ -187,7 +187,13 @@ export function App() {
           </div>
         )}
         {page === 'settings' ? (
-          <SettingsPanel value={settings} onSave={setSettings} onError={setError} />
+          settings ? (
+            <SettingsPanel value={settings} onSave={setSettings} onError={setError} />
+          ) : (
+            <p className="muted" role="status">
+              正在加载模型设置…
+            </p>
+          )
         ) : page === 'skills' ? (
           <SkillsPanel
             skills={skills}

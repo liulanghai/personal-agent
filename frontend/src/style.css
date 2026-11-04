@@ -603,6 +603,51 @@ header svg {
   overflow-wrap: anywhere;
   color: #717a6a;
 }
+.model-call-list {
+  padding: 4px 12px 14px;
+}
+.model-call {
+  margin-top: 12px;
+  border: 1px solid #e1e8d9;
+  border-radius: 8px;
+  background: #fbfcf8;
+  overflow: hidden;
+}
+.model-call > summary {
+  flex-wrap: wrap;
+  padding: 12px;
+}
+.model-overview {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.model-overview dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.model-data {
+  border-top: 1px solid #e1e8d9;
+}
+.model-copy {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+.model-calls pre {
+  max-height: 420px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #405139;
+  background: #f2f5ed;
+  padding: 12px;
+  user-select: text;
+}
 .artifact-list {
   margin-left: 44px;
   /* Artifacts close a turn; keep the same gap as between messages. */

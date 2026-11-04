@@ -16,7 +16,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 InstructionMode = Literal["auto", "codex", "claude"]
 
-DEFAULTS = {"timezone": "Asia/Shanghai", "instruction_mode": "auto"}
+DEFAULTS = {
+    "timezone": "Asia/Shanghai",
+    "instruction_mode": "auto",
+    "record_model_calls": False,
+}
 
 
 class Settings(TypedDict):
@@ -25,6 +29,7 @@ class Settings(TypedDict):
     api_key: NotRequired[str]
     timezone: str
     instruction_mode: InstructionMode
+    record_model_calls: NotRequired[bool]
 
 
 class SettingsUpdate(TypedDict):
@@ -33,6 +38,7 @@ class SettingsUpdate(TypedDict):
     api_key: str | None
     timezone: str | None
     instruction_mode: InstructionMode | None
+    record_model_calls: NotRequired[bool | None]
 
 
 class SettingsError(ValueError):
@@ -73,6 +79,8 @@ class SettingsStore:
             raise SettingsError("远程模型服务必须使用 HTTPS")
         previous = self.load()
         value: dict[str, object] = dict(update)
+        if value.get("record_model_calls") is None:
+            value["record_model_calls"] = previous.get("record_model_calls", False)
         if value["timezone"] is None:
             value["timezone"] = previous["timezone"]
         if value["instruction_mode"] is None:

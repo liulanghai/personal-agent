@@ -24,6 +24,10 @@
 | S7 | 后台与调度 | 如何让 Agent 持续为我工作？ | 持久 Worker、租约与重试、定时委托（时区/有效期）、Heartbeat、通知 outbox | Temporal 思想、现有 Agent 产品的定时任务 | 未开始 |
 | S8 | 多端与产品化 | 如何走出浏览器？ | 桌面端（Tauri/Electron）、Keychain、系统通知、IM 渠道 | — | 未开始 |
 
+## 单独授权的学习辅助功能
+
+- [模型交互记录与网页查看](features/aux-model-call-recording.md)：⑤ 验证；默认关闭，逐次 HTTP 调用记录与历史轮次查看。属于学习辅助范围，不代表完整 S2 主题已开始或完成。
+
 ## 原 P1～P3 条目的归属
 
 | 原条目 | 归入 |

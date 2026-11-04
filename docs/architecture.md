@@ -27,6 +27,7 @@ backend/agent/
   providers/
     base.py           中立类型（Message / ToolCall / StreamEvent）、ProviderError、Provider 协议
     openai_chat.py    OpenAIChatProvider：消息映射、SSE 解析、工具参数分片拼接、错误分类
+    recording.py      可选本机交互记录：任务作用域、凭证脱敏、增量保存与终态
   tools/
     registry.py       工具定义（JSON Schema）、参数校验、分发；Tools 门面
     paths.py          工作空间边界：唯一的路径校验实现
@@ -52,12 +53,12 @@ frontend/src/
     useConversation   当前会话及其 messages / runs / artifacts（唯一所有者）；isCurrent 丢弃迟到响应
     useRunEvents      最新 Run 的 SSE 订阅：Last-Event-ID 续传、连续失败上限；只持有 events / live
   lib/                纯函数：事件归并（events）、按 Run 分轮次（turns）、文案与状态（labels）、下载（download）
-  components/         展示组件，数据与回调由 props 传入，不直接调用 SDK（SettingsPanel、TaskPanel 例外：各自加载页面数据）
+  components/         展示组件，数据与回调由 props 传入；SettingsPanel、TaskPanel、ModelCalls 各自加载所需数据
 ```
 
 数据流：`useRunEvents` 不修改消息或 Run，而是通过 `onRunStarted` / `onSettled` / `onDisconnected` 回调交给 `useConversation`。事件订阅只在 Run 或会话变化时重启；Run 对象的字段更新（如状态变为 running）不会触发重订阅。
 
-对话按轮次（一个 Run 一轮，以消息与产物的 `run_id` 分组）展示：提问 → 执行过程（第一行为上下文清单，完成后折叠）→ 回复 → 产物。只有最新一轮有执行过程，因为前端只订阅最新 Run 的事件。
+对话按轮次（一个 Run 一轮，以消息与产物的 `run_id` 分组）展示：提问 → 执行过程（第一行为上下文清单，完成后折叠）→ 回复 → 产物。每轮执行过程均提供模型调用入口；最新轮次还展示订阅到的上下文与工具事件，历史轮次不回放这些事件，也不把未加载的工具数量显示成零。`ModelCalls` 展开后按 Run 查询记录，活跃 Run 每 2 秒刷新；先查询 Run 状态再读取记录，确保终态后读取包含最后一次调用。重新打开页面可读取持久记录，详情与 JSON 默认折叠，可复制。
 
 ## HTTP
 
@@ -84,13 +85,25 @@ GET `/runs/{id}/events` 使用 SSE。每个事件包含 `id`、全局递增 `seq
 
 ## 持久化与恢复
 
-数据库保存 conversation/message/run/event/file。执行错误为失败终态，工具错误作为结构化结果交回模型。中止状态持久化。服务启动时将未结束 Run 标记失败，防止盲目重复副作用。首版取消或失败的部分模型文本保存在事件里，不作为完整 assistant 消息进入后续模型历史。
+数据库保存 conversation/message/run/event/file/model_calls。执行错误为失败终态，工具错误作为结构化结果交回模型。中止状态持久化。服务启动时将未结束 Run 标记失败，防止盲目重复副作用。首版取消或失败的部分模型文本保存在事件里，不作为完整 assistant 消息进入后续模型历史。
 
 新增文件只允许写入 reports/；禁止越出 workspace，解析符号链接后再次检查目录归属。此限制保护宿主目录，但还不是对恶意本机用户的隔离沙箱。禁止直接执行模型生成的任意代码。
 
 ## 模型配置
 
 PUT `/settings` 接收 base_url、model、api_key。api_key 为 null 时保留，空字符串清除；切换 base_url 且存在旧密钥时必须显式输入新密钥。GET 仅返回 has_api_key。配置持久化到忽略的 data 目录。任务开始时读取配置；进行中的任务使用已读入的配置，不中途切换 provider。
+
+## 可选模型交互记录
+
+`record_model_calls` 默认关闭，经 GET/PUT `/settings` 读写；旧客户端省略该字段时保留原值。设置与模型配置一起在 Run 开始时读取，关闭影响后续 Run，已有记录继续保留。网页提示记录会包含对话、工具结果和文件正文。
+
+`AgentLoop` 通过任务局部 `ContextVar` 绑定 Store、Run 与 Conversation。`OpenAIChatProvider` 在每次 HTTP 请求边界创建一条记录，因此一次包含工具往返的 Run 可以对应多次调用；注入的假 Provider 不制造 HTTP 记录，不同任务的作用域相互隔离。
+
+专用 `model_calls` 表按 Run 内序号保存接口、请求 JSON、接收到的原始 SSE 文本、拼接后的回复与工具调用、usage（服务端有返回时）、HTTP 状态、耗时及错误。原始文本保留换行，经过 HTTPX 字符解码与凭证脱敏，并非网络字节抓包；解析在 `[DONE]` 结束，不保证保留结束标记后尚未接收的字节。不额外发送 `stream_options`。JSON 错误响应也保留解析后的 body。
+
+接收片段时同步持久化，失败和取消保留已接收内容；启动恢复把遗留的 running 调用标记为 interrupted。请求和响应 headers 均不保存，URL 去除用户信息、全部 query 与 fragment；配置密钥及 URL 中凭证的常见 URL/JSON 编码回显会被替换为 `[REDACTED]`。跨片段的凭证前缀暂缓写入，结束时仍不明文写回。解析异常转换为不含原文的安全错误。记录不进入普通 Run 事件或应用日志。
+
+GET `/runs/{id}/model-calls` 按序返回记录，未知 Run 返回 404，沿用现有 API 安全中间件。详情见 [模型交互记录功能文档](features/aux-model-call-recording.md)。当前无自动清理、分页或全文大小上限；逐片段同步 SQLite 写入适合本机学习，长响应的内存、磁盘与写入开销需要后续优化。
 
 ## 技术参考
 

@@ -22,6 +22,7 @@ export function SettingsPanel({
   const [instructionMode, setInstructionMode] = useState<InstructionMode>(
     value?.instruction_mode || 'auto',
   );
+  const [recordModelCalls, setRecordModelCalls] = useState(value?.record_model_calls ?? false);
   const [discovery, setDiscovery] = useState<Discovery | null>(null);
   useEffect(() => {
     client
@@ -43,6 +44,7 @@ export function SettingsPanel({
         model,
         timezone,
         instruction_mode: instructionMode,
+        record_model_calls: recordModelCalls,
         api_key: clearKey ? '' : key || null,
       });
       onSave(result);
@@ -151,6 +153,18 @@ export function SettingsPanel({
             清除已保存密钥（清除后需重新配置才能使用）
           </label>
         )}
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={recordModelCalls}
+            onChange={(e) => setRecordModelCalls(e.target.checked)}
+          />
+          保存完整模型交互（学习用，默认关闭）
+        </label>
+        <p className="muted">
+          开启后，新执行的请求 JSON、原始响应、回复与工具调用会保存在本机，包含对话和文件正文。
+          不保存鉴权 headers，配置密钥会脱敏。关闭只影响后续执行，已有记录仍可查看。
+        </p>
         <div className="form-footer">
           <span>
             {saved ? (

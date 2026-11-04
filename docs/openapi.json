@@ -280,6 +280,45 @@
         }
       }
     },
+    "/api/v1/runs/{rid}/model-calls": {
+      "get": {
+        "summary": "Model Calls",
+        "operationId": "model_calls_api_v1_runs__rid__model_calls_get",
+        "parameters": [
+          {
+            "name": "rid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelCalls"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/runs/{rid}/context": {
       "get": {
         "summary": "Run Context",
@@ -1001,6 +1040,140 @@
         ],
         "title": "Messages"
       },
+      "ModelCall": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id"
+          },
+          "sequence": {
+            "type": "integer",
+            "title": "Sequence"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "started_at": {
+            "type": "string",
+            "title": "Started At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "title": "Duration Ms"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled",
+              "interrupted"
+            ],
+            "title": "Status"
+          },
+          "request": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Request"
+          },
+          "response": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Response"
+          },
+          "raw_response": {
+            "type": "string",
+            "title": "Raw Response"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "conversation_id",
+          "run_id",
+          "sequence",
+          "url",
+          "method",
+          "model",
+          "started_at",
+          "finished_at",
+          "duration_ms",
+          "http_status",
+          "status",
+          "request",
+          "response",
+          "raw_response",
+          "error"
+        ],
+        "title": "ModelCall"
+      },
+      "ModelCalls": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCall"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "ModelCalls"
+      },
       "RuleSource": {
         "properties": {
           "scope": {
@@ -1142,6 +1315,11 @@
           "workspace_path": {
             "type": "string",
             "title": "Workspace Path"
+          },
+          "record_model_calls": {
+            "type": "boolean",
+            "title": "Record Model Calls",
+            "default": false
           }
         },
         "type": "object",
@@ -1206,6 +1384,17 @@
               }
             ],
             "title": "Instruction Mode"
+          },
+          "record_model_calls": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Model Calls"
           }
         },
         "type": "object",

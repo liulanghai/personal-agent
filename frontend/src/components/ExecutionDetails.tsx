@@ -1,22 +1,31 @@
 import { Activity, Check, LoaderCircle, ScrollText } from 'lucide-react';
 import type { ToolStep } from '../lib/events';
 
+import { ModelCalls } from './ModelCalls';
+
 const STEP_LABELS = { running: '执行中', succeeded: '完成', failed: '失败' } as const;
 
 interface ExecutionDetailsProps {
-  steps: ToolStep[];
+  runId: string;
+  steps: ToolStep[] | undefined;
   /** The run's context manifest; shown as the first step once it has been built. */
   manifest: Record<string, unknown> | undefined;
   open: boolean;
   statusLabel: string;
 }
 
-export function ExecutionDetails({ steps, manifest, open, statusLabel }: ExecutionDetailsProps) {
+export function ExecutionDetails({
+  runId,
+  steps,
+  manifest,
+  open,
+  statusLabel,
+}: ExecutionDetailsProps) {
   return (
     <details className="execution" open={open}>
       <summary>
         <Activity size={15} />
-        执行过程 · {steps.length} 次工具调用
+        执行过程{steps && ` · ${steps.length} 次工具调用`}
         <span>{statusLabel}</span>
       </summary>
       {manifest && (
@@ -29,7 +38,8 @@ export function ExecutionDetails({ steps, manifest, open, statusLabel }: Executi
           <pre>{JSON.stringify(manifest, null, 2)}</pre>
         </details>
       )}
-      {steps.map((step) => (
+      <ModelCalls key={runId} runId={runId} />
+      {steps?.map((step) => (
         <details key={step.id} className="tool-row">
           <summary>
             {step.status === 'running' ? (

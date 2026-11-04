@@ -24,6 +24,11 @@ def build(services: Services) -> APIRouter:
     async def runs(conversation_id: str | None = None) -> dict[str, Any]:
         return {"items": store.list_runs(conversation_id)}
 
+    @router.get("/runs/{rid}/model-calls", response_model=api.ModelCalls)
+    async def model_calls(rid: str) -> dict[str, Any]:
+        require_run(store, rid)
+        return {"items": store.list_model_calls(rid)}
+
     @router.get("/runs/{rid}/context", response_model=api.ContextManifest)
     async def run_context(rid: str) -> Any:
         require_run(store, rid)
