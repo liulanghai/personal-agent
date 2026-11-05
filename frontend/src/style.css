@@ -557,51 +557,39 @@ header svg {
   margin-left: 12px;
   letter-spacing: 4px;
 }
-.execution {
-  margin: 0 0 25px 44px;
-  border: 1px solid #e4e9de;
-  border-radius: 9px;
-  overflow: hidden;
-}
-.execution > summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  background: #f4f7f0;
-  padding: 11px 13px;
-  font-size: 11px;
-  color: #809071;
-}
-.execution > summary span {
-  margin-left: auto;
-  font-size: 10px;
-}
-.tool-row {
-  padding: 10px 13px;
-  border-top: 1px solid #e8ece3;
+.step {
+  margin: 6px 0;
   color: #7b8c6b;
+  font-size: 11px;
 }
-.tool-row summary {
+.step > summary {
   display: flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  list-style: none;
 }
-.tool-row code {
+.step > summary::-webkit-details-marker {
+  display: none;
+}
+.step code {
   font-size: 10px;
 }
-.tool-row summary span {
-  margin-left: auto;
-  font-size: 9px;
+.step > summary span {
+  font-size: 10px;
+  color: #a1ac95;
 }
-.tool-row pre {
+.message-body .step > pre {
   max-height: 220px;
-  overflow: auto;
   font-size: 10px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: #717a6a;
+  margin: 6px 0 10px 22px;
+}
+.run-note {
+  font-size: 11px;
+  color: #a1ac95;
 }
 .model-call-list {
   padding: 4px 12px 14px;
@@ -613,9 +601,14 @@ header svg {
   background: #fbfcf8;
   overflow: hidden;
 }
-.model-call > summary {
+.model-call > summary,
+.model-data > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
   padding: 12px;
+  cursor: pointer;
 }
 .model-overview {
   display: grid;
@@ -649,9 +642,7 @@ header svg {
   user-select: text;
 }
 .artifact-list {
-  margin-left: 44px;
-  /* Artifacts close a turn; keep the same gap as between messages. */
-  margin-bottom: 30px;
+  margin-top: 14px;
   display: grid;
   gap: 10px;
 }
@@ -701,8 +692,8 @@ header svg {
   padding: 0;
   display: flex;
 }
-.run-error {
-  margin-left: 44px;
+.message-body .run-error {
+  margin: 10px 0;
 }
 .content-page {
   padding: 55px 50px;
@@ -1155,10 +1146,6 @@ header svg {
   }
   .message {
     gap: 10px;
-  }
-  .execution,
-  .artifact-list {
-    margin-left: 0;
   }
   .modal-backdrop {
     padding: 15px;

@@ -74,7 +74,7 @@ export function ModelCalls({ runId }: { runId: string }) {
     };
   }, [open, runId, revision]);
   return (
-    <details className="tool-row model-calls" onToggle={(e) => setOpen(e.currentTarget.open)}>
+    <details className="step model-calls" onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary>
         <Radio size={14} /> 模型调用{' '}
         <span>{open ? `${calls.length} 次 HTTP 调用` : '查看交互记录'}</span>

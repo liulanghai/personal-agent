@@ -51,14 +51,18 @@ frontend/src/
   api/client.ts       AgentClient 单例：前端访问后端的唯一入口
   hooks/
     useConversation   当前会话及其 messages / runs / artifacts（唯一所有者）；isCurrent 丢弃迟到响应
-    useRunEvents      最新 Run 的 SSE 订阅：Last-Event-ID 续传、连续失败上限；只持有 events / live
-  lib/                纯函数：事件归并（events）、按 Run 分轮次（turns）、文案与状态（labels）、下载（download）
+    useRunEvents      最新 Run 的 SSE 订阅：Last-Event-ID 续传、连续失败上限；只持有该 Run 的事件数组
+  lib/                纯函数：事件 → 回复时间线（timeline）、按 Run 分轮次（turns）、文案与状态（labels）、下载（download）
   components/         展示组件，数据与回调由 props 传入；SettingsPanel、TaskPanel、ModelCalls 各自加载所需数据
 ```
 
 数据流：`useRunEvents` 不修改消息或 Run，而是通过 `onRunStarted` / `onSettled` / `onDisconnected` 回调交给 `useConversation`。事件订阅只在 Run 或会话变化时重启；Run 对象的字段更新（如状态变为 running）不会触发重订阅。
 
-对话按轮次（一个 Run 一轮，以消息与产物的 `run_id` 分组）展示：提问 → 执行过程（第一行为上下文清单，完成后折叠）→ 回复 → 产物。每轮执行过程均提供模型调用入口；最新轮次还展示订阅到的上下文与工具事件，历史轮次不回放这些事件，也不把未加载的工具数量显示成零。`ModelCalls` 展开后按 Run 查询记录，活跃 Run 每 2 秒刷新；先查询 Run 状态再读取记录，确保终态后读取包含最后一次调用。重新打开页面可读取持久记录，详情与 JSON 默认折叠，可复制。
+对话按轮次（一个 Run 一轮，以消息与产物的 `run_id` 分组）展示：提问 → 栖的回复（`AgentReply`）。回复内容是该 Run 事件流的时间线（`lib/timeline.ts`），**按 Loop 实际产出的顺序**排列：连续的 `message.delta` 合并为一段正文，`context.built`、每次工具调用（Skill 也是工具调用，如 `read_skill`）各为一行可展开的步骤，失败/取消显示在末尾，产物附在回复最后。时间线不认识具体工具，未知事件类型显示为通用行，新事件无需改前端即可看到。
+
+运行中与完成后用同一套渲染，位置不跳动。已完成的 Run 只有事件流到达终止事件时才用时间线；否则（事件未加载或中途断开）回退为保存的回复文本与 Run 错误。前端只订阅最新 Run 的事件，因此历史轮次不回放步骤，只显示保存的回复文本及产物。
+
+每轮回复在正文与步骤之后、产物之前保留独立的「模型调用」折叠入口，不将 HTTP 记录伪装为时间线事件。入口使用轮次的 `runId`，即使旧 Run 不在已加载的 Run 列表中、没有保存的回复文本，仍能查看记录。`ModelCalls` 展开后按 Run 查询，活跃 Run 每 2 秒刷新；先查询 Run 状态再读取记录，确保终态后读取包含最后一次调用。重新打开页面可读取持久记录，详情与 JSON 默认折叠，可复制。
 
 ## HTTP
 

@@ -14,7 +14,7 @@
 
 | 编号 | 主题 | 学习问题 | 主要内容 | 调研候选（② 阶段核实） | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| S0 | 工程地基 | 工业级项目的工程骨架长什么样？ | Python 3.12 升级、模块重构、ruff/mypy/ESLint、pre-commit、GitHub Actions CI、`make check`、契约检查、Provider 抽象 | LiteLLM、pydantic-ai 的 provider 层；Codex CLI 的仓库工程实践 | ① 需求定义 |
+| S0 | 工程地基 | 工业级项目的工程骨架长什么样？ | Python 3.12 升级、模块重构、ruff/mypy/ESLint、pre-commit、GitHub Actions CI、`make check`、契约检查、Provider 抽象 | LiteLLM、pydantic-ai 的 provider 层；Codex CLI 的仓库工程实践 | ⑤ 验证（时间线整合验收，待用户复核） |
 | S1 | Agent 循环 | Agent 的本质是什么？循环如何终止、出错如何恢复？ | 循环与终止条件、工具注册表、并行工具调用、错误恢复与重试、计划/todo 工具、步数与预算控制 | Anthropic《Building Effective Agents》、OpenAI Codex CLI、smolagents、OpenAI Agents SDK | 未开始 |
 | S2 | 可观测与评测 | 如何知道 Agent 变好还是变坏？ | Trace/Span、token 与费用统计、评测任务集与评分、结果对比 | OpenTelemetry GenAI 语义约定、Langfuse、Inspect AI | 未开始 |
 | S3 | 上下文工程 | 长任务如何不爆上下文、不丢重点？ | token 计数、工具结果截断、对话压缩（compaction）、提示缓存、上下文摘要 | Claude Code / Codex 的压缩机制、Manus 上下文工程文章、Cline | 未开始 |

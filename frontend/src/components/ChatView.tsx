@@ -1,11 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { AgentEvent, AgentFile, Message, Run } from '@personal-agent/sdk';
-import { contextManifest, toolSteps } from '../lib/events';
-import { isActive, STATUS_LABELS } from '../lib/labels';
+import { isActive } from '../lib/labels';
 import { groupTurns } from '../lib/turns';
 import { Composer } from './Composer';
-import { ExecutionDetails } from './ExecutionDetails';
 import { MessageList } from './MessageList';
 import { Welcome, type Suggestion } from './Welcome';
 
@@ -13,9 +11,10 @@ type ComposerProps = Parameters<typeof Composer>[0];
 
 interface ChatViewProps {
   messages: Message[];
-  run: Run | undefined;
+  /** Runs of the conversation, newest first. */
+  runs: Run[];
+  /** Events of the latest run. */
   events: AgentEvent[];
-  live: string;
   artifacts: AgentFile[];
   composer: Omit<ComposerProps, 'running'>;
   onSuggest: (suggestion: Suggestion) => void;
@@ -25,17 +24,16 @@ interface ChatViewProps {
 }
 
 export function ChatView(props: ChatViewProps) {
-  const { messages, run, events, live } = props;
+  const { messages, runs, events } = props;
+  const run = runs[0];
   const running = isActive(run);
-  const steps = toolSteps(events);
-  const manifest = contextManifest(events);
   const bottom = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (messages.length || live || events.length) {
+    if (messages.length || events.length) {
       bottom.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, live, events.length]);
+  }, [messages, events]);
 
   return (
     <>
@@ -45,20 +43,9 @@ export function ChatView(props: ChatViewProps) {
         ) : (
           <MessageList
             turns={groupTurns(messages, props.artifacts, run?.id)}
+            runs={runs}
             latestRunId={run?.id}
-            live={running ? live : null}
-            process={
-              run && (
-                <ExecutionDetails
-                  runId={run.id}
-                  steps={steps}
-                  manifest={manifest}
-                  open={running}
-                  statusLabel={run ? STATUS_LABELS[run.status] : ''}
-                />
-              )
-            }
-            outcome={run?.error && <div className="run-error">{run.error}</div>}
+            events={events}
             onPreviewArtifact={props.onPreviewArtifact}
             onDownloadArtifact={props.onDownloadArtifact}
           />

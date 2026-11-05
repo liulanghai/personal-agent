@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentEvent, Message, Run } from '@personal-agent/sdk';
@@ -118,20 +118,27 @@ describe('App', () => {
     client.runs.modelCalls.mockResolvedValue({ items: [] });
     render(<App />);
     await userEvent.click(await screen.findByRole('button', { name: '周报讨论' }));
-    const historical = (await screen.findByText('历史执行')).closest('details')!;
-    expect(historical.open).toBe(false);
-    expect(historical.querySelector('summary')!.textContent).not.toContain('0 次工具调用');
-    await userEvent.click(historical.querySelector('summary')!);
-    await userEvent.click(within(historical).getByText('模型调用'));
-    expect(await within(historical).findByText(/开启前的调用无法补录/)).toBeTruthy();
-    expect(client.runs.modelCalls).toHaveBeenCalledWith('old-run');
+    await waitFor(() => expect(client.messages.list).toHaveBeenCalledTimes(2));
+    const entries = screen.getAllByText('模型调用');
+    expect(entries).toHaveLength(2);
+    expect(client.runs.modelCalls).not.toHaveBeenCalled();
+    // The older run is absent from runs.list, and has no saved assistant text.
+    // Its ID still comes from the turn, so both record panels remain reachable.
+    for (const [index, runId] of ['old-run', 'r1'].entries()) {
+      const panel = entries[index].closest('details')!;
+      expect(panel.open).toBe(false);
+      expect(panel.textContent).not.toContain('0 次工具调用');
+      await userEvent.click(entries[index]);
+      expect(await within(panel).findByText(/开启前的调用无法补录/)).toBeTruthy();
+      expect(client.runs.modelCalls).toHaveBeenNthCalledWith(index + 1, runId);
+    }
   });
 
-  it('opens a conversation and lays out its finished run in reading order', async () => {
-    const messages = {
-      items: [message('m1', 'user', '写周报'), message('m2', 'assistant', '周报已生成')],
-    };
-    client.messages.list.mockResolvedValue(messages);
+  it('replays a finished run in the order the loop produced it, inside the reply', async () => {
+    const saved = '先读一下文件\n\n再看看技能\n\n周报已生成';
+    client.messages.list.mockResolvedValue({
+      items: [message('m1', 'user', '写周报'), message('m2', 'assistant', saved)],
+    });
     // A fresh object per call, like JSON from a real server: a refresh must not
     // look like a new run to the event subscription.
     client.runs.list.mockImplementation(async () => ({ items: [completedRun()] }));
@@ -148,41 +155,75 @@ describe('App', () => {
         },
       ],
     });
+    // Text, tool calls, a skill and an event type the UI has never seen, interleaved.
     client.runs.events.mockImplementation(() =>
       replay([
-        event('1', 'context.built', { instructions: ['AGENTS.md'] }),
-        event('2', 'tool_call.started', { tool_call_id: 't1', tool_name: 'read_file' }),
-        event('3', 'tool_call.completed', { tool_call_id: 't1', status: 'succeeded' }),
-        event('4', 'run.completed'),
+        event('1', 'run.started'),
+        event('2', 'context.built', { instructions: ['AGENTS.md'] }),
+        event('3', 'message.delta', { delta: '先读一下' }),
+        event('4', 'message.delta', { delta: '文件' }),
+        event('5', 'tool_call.started', { tool_call_id: 't1', tool_name: 'read_file' }),
+        event('6', 'tool_call.completed', { tool_call_id: 't1', status: 'succeeded' }),
+        event('7', 'message.delta', { delta: '再看看技能' }),
+        event('8', 'tool_call.started', { tool_call_id: 't2', tool_name: 'read_skill' }),
+        event('9', 'tool_call.completed', { tool_call_id: 't2', status: 'failed' }),
+        event('10', 'plan.updated', { steps: 2 }),
+        event('11', 'message.delta', { delta: '周报已生成' }),
+        event('12', 'run.completed'),
       ]),
     );
     render(<App />);
 
     await userEvent.click(await screen.findByRole('button', { name: '周报讨论' }));
 
-    const reply = await screen.findByText('周报已生成');
-    const summary = await screen.findByText(/执行过程 · 1 次工具调用/);
-    const execution = summary.closest('details')!;
-    expect(within(summary).getByText('已完成')).toBeTruthy();
-    // Finished runs keep the execution collapsed.
-    expect(execution.open).toBe(false);
-    // The context manifest lives inside the execution, as its first step.
-    const steps = execution.querySelectorAll(':scope > details > summary');
-    expect(Array.from(steps, (s) => s.textContent)).toEqual([
+    // The saved reply renders first; wait for a step only the event timeline has.
+    await screen.findByText('plan.updated');
+    await waitFor(() => expect(client.messages.list).toHaveBeenCalledTimes(2));
+    const reply = screen.getByText('plan.updated').closest<HTMLElement>('.message.assistant')!;
+    // Everything the run produced sits inside the agent's reply, after the prompt.
+    expect(isBefore(screen.getByText('写周报'), reply)).toBe(true);
+    const parts = Array.from(
+      reply.querySelectorAll(
+        '.message-body > p, .message-body > .step > summary, .artifact strong',
+      ),
+      (el) => el.textContent,
+    );
+    expect(parts).toEqual([
       expect.stringContaining('构建上下文'),
-      expect.stringContaining('模型调用'),
+      '先读一下文件',
       expect.stringContaining('read_file'),
+      '再看看技能',
+      expect.stringContaining('read_skill'),
+      expect.stringContaining('plan.updated'),
+      '周报已生成',
+      expect.stringContaining('模型调用'),
+      'weekly.md',
     ]);
-    expect(screen.queryByText('查看本次上下文与环境信息')).toBeNull();
-    // Reading order: prompt → execution → reply → artifacts.
-    const prompt = screen.getByText('写周报');
-    const artifact = await screen.findByText('weekly.md');
-    expect(isBefore(prompt, execution)).toBe(true);
-    expect(isBefore(execution, reply)).toBe(true);
-    expect(isBefore(reply, artifact)).toBe(true);
+    expect(within(reply).getByText('失败')).toBeTruthy();
+    // The timeline replaces the saved text; it is not shown twice.
+    expect(screen.getAllByText('周报已生成')).toHaveLength(1);
     // The stream is opened once per run, from the beginning.
     expect(client.runs.events).toHaveBeenCalledTimes(1);
     expect(client.runs.events.mock.calls[0].slice(0, 2)).toEqual(['r1', undefined]);
+  });
+
+  it('falls back to the saved reply when the stream did not reach the end', async () => {
+    client.messages.list.mockResolvedValue({
+      items: [message('m1', 'user', '写周报'), message('m2', 'assistant', '周报已生成')],
+    });
+    client.runs.list.mockImplementation(async () => ({ items: [completedRun()] }));
+    client.runs.events.mockImplementation(() =>
+      replay([event('1', 'message.delta', { delta: '周报' })]),
+    );
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole('button', { name: '周报讨论' }));
+
+    // Check after the stream has ended and triggered the refresh, not before
+    // the initial saved reply has been replaced (if the fallback is broken).
+    await waitFor(() => expect(client.messages.list).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('周报已生成')).toBeTruthy();
+    expect(screen.queryByText('周报', { exact: true })).toBeNull();
   });
 });
 

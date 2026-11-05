@@ -34,7 +34,7 @@ export function App() {
 
   const conversation = useConversation(setError);
   const run = conversation.runs[0];
-  const stream = useRunEvents(run, conversation.conversationId, {
+  const events = useRunEvents(run, conversation.conversationId, {
     isCurrent: conversation.isCurrent,
     onRunStarted: conversation.markRunning,
     onSettled: conversation.refreshAfterRun,
@@ -214,9 +214,8 @@ export function App() {
         ) : (
           <ChatView
             messages={conversation.messages}
-            run={run}
-            events={stream.events}
-            live={stream.live}
+            runs={conversation.runs}
+            events={events}
             artifacts={conversation.artifacts}
             composer={{
               draft,

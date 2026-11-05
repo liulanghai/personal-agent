@@ -1,23 +1,20 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment } from 'react';
 import Markdown from 'react-markdown';
-import type { AgentFile, Message } from '@personal-agent/sdk';
+import type { AgentEvent, AgentFile, Message, Run } from '@personal-agent/sdk';
 import type { Turn } from '../lib/turns';
-import { ArtifactList } from './ArtifactList';
-import { ExecutionDetails } from './ExecutionDetails';
+import { AgentReply } from './AgentReply';
 
-function MessageItem({ message }: { message: Message }) {
-  const mine = message.role === 'user';
+function UserMessage({ message }: { message: Message }) {
   const time = new Date(message.created_at).toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
   });
   return (
-    <div className={`message ${message.role}`}>
-      <div className="message-avatar">{mine ? '我' : '栖'}</div>
+    <div className="message user">
+      <div className="message-avatar">我</div>
       <div className="message-body">
         <div className="message-author">
-          {mine ? '你' : '栖'}
-          <small>{time}</small>
+          你<small>{time}</small>
         </div>
         <Markdown>{message.content}</Markdown>
       </div>
@@ -25,78 +22,37 @@ function MessageItem({ message }: { message: Message }) {
   );
 }
 
-/** The assistant bubble shown while a run is active: live text or a thinking hint. */
-function LiveReply({ text }: { text: string }) {
-  return (
-    <div className="message assistant">
-      <div className="message-avatar">栖</div>
-      <div className="message-body">
-        <div className="message-author">
-          栖 <small>正在处理</small>
-        </div>
-        {text ? (
-          <Markdown>{text}</Markdown>
-        ) : (
-          <span className="thinking">
-            正在思考与执行<span>•••</span>
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 interface MessageListProps {
   turns: Turn[];
+  runs: Run[];
   latestRunId: string | undefined;
-  /** Live assistant text of the latest run; `null` when no run is active. */
-  live: string | null;
-  /** Shown in the latest turn between the prompt and the reply (execution details). */
-  process?: ReactNode;
-  /** Shown in the latest turn after the reply (run error). */
-  outcome?: ReactNode;
+  /** Events of the latest run; older runs have none loaded. */
+  events: AgentEvent[];
   onPreviewArtifact: (file: AgentFile) => void;
   onDownloadArtifact: (file: AgentFile) => void;
 }
 
-/** Each turn reads top to bottom: prompt → execution → reply → artifacts. */
+/** Each turn is the user's prompt followed by the agent's reply for that run. */
 export function MessageList(props: MessageListProps) {
-  const { turns, latestRunId, live } = props;
+  const runs = new Map(props.runs.map((r) => [r.id, r]));
   return (
     <div className="message-list">
-      {turns.map((turn) => {
-        const latest = turn.runId === latestRunId;
-        return (
-          <Fragment key={turn.runId}>
-            {turn.prompts.map((m) => (
-              <MessageItem key={m.id} message={m} />
-            ))}
-            {latest ? (
-              props.process
-            ) : (
-              <ExecutionDetails
-                runId={turn.runId}
-                steps={undefined}
-                manifest={undefined}
-                open={false}
-                statusLabel="历史执行"
-              />
-            )}
-            {turn.replies.map((m) => (
-              <MessageItem key={m.id} message={m} />
-            ))}
-            {latest && live !== null && <LiveReply text={live} />}
-            {latest && props.outcome}
-            {turn.artifacts.length > 0 && (
-              <ArtifactList
-                artifacts={turn.artifacts}
-                onPreview={props.onPreviewArtifact}
-                onDownload={props.onDownloadArtifact}
-              />
-            )}
-          </Fragment>
-        );
-      })}
+      {props.turns.map((turn) => (
+        <Fragment key={turn.runId}>
+          {turn.prompts.map((m) => (
+            <UserMessage key={m.id} message={m} />
+          ))}
+          <AgentReply
+            runId={turn.runId}
+            run={runs.get(turn.runId)}
+            replies={turn.replies}
+            events={turn.runId === props.latestRunId ? props.events : undefined}
+            artifacts={turn.artifacts}
+            onPreviewArtifact={props.onPreviewArtifact}
+            onDownloadArtifact={props.onDownloadArtifact}
+          />
+        </Fragment>
+      ))}
     </div>
   );
 }
