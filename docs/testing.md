@@ -46,7 +46,9 @@ make check       # lint + 类型检查 + 测试 + 契约一致性，CI 运行同
 
 - 配置：`frontend/vitest.config.ts`（jsdom），`src/test/setup.ts` 补 `scrollIntoView` 并在每个用例后 `cleanup()`。测试文件与源文件同目录，命名 `*.test.ts(x)`。
 - 前端只经由 `src/api/client.ts` 访问后端，测试用 `vi.mock('./api/client', ...)` 整体替换，不发真实请求。事件流用 async generator 回放脚本化事件。
-- 纯逻辑放进 `lib/`，用普通单测覆盖；组件与 hooks 通过 App 级用例按用户可见的文本和角色断言（Testing Library 的 `getByRole` / `findByText`），不断言内部状态。
+- 纯逻辑放进 `lib/`，用普通单测覆盖；展示组件可通过 props 与 `rerender` 验证运行状态转换，hooks 通过 App 级用例验证。按用户可见的文本、角色与 DOM 顺序断言（Testing Library 的 `getByRole` / `findByText`），不断言内部状态。
+- 事件时间线覆盖正文与工具/Skill 交错、未知事件保留、失败/取消、完成后正文与展开状态不丢失。异步回放用例等待事件专有内容和流结束后的刷新，避免误把最初的保存回复当成时间线，也避免回退测试在事件到达前就通过。
+- 时间线整合同时覆盖最新/历史轮次的模型记录入口：按需查询、旧 Run 未加载且无回复正文时仍可访问、记录入口位于产物之前；保留设置异步加载与记录组件的复制/刷新测试。
 - 测试替身返回的对象要像真实服务端一样每次都是新对象：hooks 的依赖比较按引用进行，复用同一对象会掩盖重复订阅一类问题。
 
 ## 假模型：两层替身

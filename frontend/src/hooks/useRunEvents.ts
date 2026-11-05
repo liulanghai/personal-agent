@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from 'react';
 import type { AgentEvent, Run } from '@personal-agent/sdk';
 import { client } from '../api/client';
-import { isTerminal } from '../lib/events';
+import { isTerminal } from '../lib/timeline';
 import { isActive } from '../lib/labels';
 
 const MAX_RETRIES = 4;
@@ -19,14 +19,13 @@ export interface RunEventHandlers {
 interface StreamState {
   key: string | null;
   events: AgentEvent[];
-  live: string;
 }
 
 /**
  * Subscribe to the latest run's event stream (SSE), resuming with Last-Event-ID
  * after a dropped connection and giving up after a few consecutive failures.
  *
- * The hook owns only stream state (events, live text). Everything else is
+ * The hook owns only the stream (the run's events). Everything else is
  * reported through handlers, so the conversation hook stays the single owner of
  * messages and runs.
  */
@@ -37,10 +36,10 @@ export function useRunEvents(
 ) {
   const runId = run?.id;
   const key = runId && conversationId ? conversationId + '/' + runId : null;
-  const [state, setState] = useState<StreamState>({ key, events: [], live: '' });
+  const [state, setState] = useState<StreamState>({ key, events: [] });
   // A new run (or conversation) starts from an empty stream. Resetting during
   // render, rather than in the effect, avoids one frame of stale events.
-  if (state.key !== key) setState({ key, events: [], live: '' });
+  if (state.key !== key) setState({ key, events: [] });
 
   // Effect events read the latest props without making them effect dependencies:
   // the subscription must restart only when the run or conversation changes, not
@@ -56,11 +55,10 @@ export function useRunEvents(
     const selected = conversationId;
     const streamKey = selected + '/' + runId;
     const abort = new AbortController();
-    const update = (change: (s: StreamState) => StreamState) =>
-      setState((s) => (s.key === streamKey ? change(s) : s));
+    const append = (event: AgentEvent) =>
+      setState((s) => (s.key === streamKey ? { ...s, events: [...s.events, event] } : s));
     let lastId: string | undefined;
     let retries = 0;
-    let text = '';
     let finished = startsFinished();
 
     const listen = async () => {
@@ -70,18 +68,12 @@ export function useRunEvents(
             if (!isCurrent(selected)) return;
             lastId = event.id;
             retries = 0;
-            update((s) => ({ ...s, events: [...s.events, event] }));
+            append(event);
             if (event.type === 'run.started') runStarted(runId);
-            if (event.type === 'message.delta') {
-              text += String(event.data.delta);
-              const snapshot = text;
-              if (!finished) update((s) => ({ ...s, live: snapshot }));
-            }
             if (isTerminal(event)) finished = true;
           }
           if (!isCurrent(selected) || abort.signal.aborted) return;
           const latest = await settle(selected, runId);
-          update((s) => ({ ...s, live: '' }));
           if (finished || !isActive(latest)) return;
         } catch {
           if (abort.signal.aborted) return;
@@ -97,5 +89,5 @@ export function useRunEvents(
     return () => abort.abort();
   }, [runId, conversationId]);
 
-  return { events: state.events, live: state.live };
+  return state.events;
 }

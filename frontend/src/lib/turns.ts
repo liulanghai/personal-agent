@@ -1,8 +1,8 @@
 /**
  * Group a conversation into turns: one turn per run, holding the user prompt,
  * the assistant reply and the artifacts that run produced. The chat view renders
- * a turn as prompt → execution → reply → artifacts, so results stay next to the
- * request that caused them.
+ * a turn as the prompt followed by the agent's reply (its steps, text and
+ * artifacts), so results stay next to the request that caused them.
  */
 import type { AgentFile, Message } from '@personal-agent/sdk';
 
