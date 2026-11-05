@@ -7,12 +7,15 @@ Responsibilities that live here and nowhere else:
 - HTTP status / transport failures -> ``ProviderError``
 
 Provider response bodies are never logged or put into error messages: they
-may echo credentials. Error bodies are only inspected (bounded) for
-classification.
+may echo credentials. Error classification inspects a bounded prefix. Explicitly
+opted-in learning records keep sanitized bodies in a dedicated local store.
 """
 
+import asyncio
 import json
-from collections.abc import AsyncGenerator, Sequence
+import re
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from dataclasses import asdict
 from typing import Any
 
 import httpx
@@ -30,6 +33,7 @@ from .base import (
     ToolSpec,
     Usage,
 )
+from .recording import Recorder, recording_scope
 
 TIMEOUT_SECONDS = 90
 ERROR_BODY_PEEK = 4096
@@ -96,6 +100,8 @@ class _ToolCallBuffer:
         self._calls: dict[int, dict[str, str]] = {}
 
     def add(self, fragment: dict[str, Any]) -> None:
+        if not isinstance(fragment["index"], int):
+            raise ValueError("Invalid tool call index")
         current = self._calls.setdefault(fragment["index"], {"id": "", "name": "", "arguments": ""})
         if fragment.get("id"):
             current["id"] = fragment["id"]
@@ -148,6 +154,9 @@ class OpenAIChatProvider:
             "tools": [to_chat_tool(t) for t in tools],
             "stream": True,
         }
+        scope = recording_scope.get()
+        recorder = Recorder(scope, self.url, self.api_key, body) if scope else None
+        status, error = "completed", None
         try:
             async with self._http().stream(
                 "POST",
@@ -155,23 +164,47 @@ class OpenAIChatProvider:
                 headers={"Authorization": "Bearer " + self.api_key},
                 json=body,
             ) as response:
+                if recorder:
+                    recorder.record["http_status"] = response.status_code
+                    recorder.save()
                 if response.status_code >= 400:
-                    raise await self._status_error(response)
-                async for event in self._parse(response):
+                    raise await self._status_error(response, recorder)
+                async for event in self._parse(response, recorder):
                     yield event
+        except (asyncio.CancelledError, GeneratorExit):
+            status, error = "cancelled", "调用已取消"
+            raise
         except httpx.TransportError as exc:
-            raise ProviderError(
-                "network",
-                "执行失败（" + type(exc).__name__ + "），请检查模型连接或本地文件",
-                retryable=True,
-            ) from exc
+            status = "failed"
+            error = "执行失败（" + type(exc).__name__ + "），请检查模型连接或本地文件"
+            raise ProviderError("network", error, retryable=True) from exc
+        except (ValueError, TypeError, KeyError, AttributeError, IndexError):
+            # Conversion errors may quote arbitrary response values, including credentials.
+            status, error = "failed", "模型服务返回了无法解析的流数据"
+            raise ProviderError("other", error, retryable=False) from None
+        except Exception as exc:
+            status = "failed"
+            error = str(exc) if isinstance(exc, ProviderError) else type(exc).__name__
+            raise
+        finally:
+            if recorder:
+                recorder.finish(status, error)
 
-    async def _status_error(self, response: httpx.Response) -> ProviderError:
+    async def _status_error(
+        self, response: httpx.Response, recorder: Recorder | None = None
+    ) -> ProviderError:
         peek = b""
-        async for chunk in response.aiter_bytes():
-            peek += chunk
-            if len(peek) >= ERROR_BODY_PEEK:
+        async for text in response.aiter_text():
+            if recorder:
+                recorder.receive(text)
+            peek = (peek + text.encode())[:ERROR_BODY_PEEK]
+            if recorder is None and len(peek) >= ERROR_BODY_PEEK:
                 break
+        if recorder:
+            try:
+                recorder.record["response"]["body"] = json.loads(recorder.raw)
+            except ValueError:
+                pass  # Non-JSON error bodies remain available in the raw record.
         kind, retryable = classify_status(response.status_code, peek[:ERROR_BODY_PEEK])
         return ProviderError(
             kind,
@@ -180,11 +213,29 @@ class OpenAIChatProvider:
             status_code=response.status_code,
         )
 
-    async def _parse(self, response: httpx.Response) -> AsyncGenerator[StreamEvent, None]:
+    async def _lines(
+        self, response: httpx.Response, recorder: Recorder | None
+    ) -> AsyncIterator[str]:
+        buffer = ""
+        async for text in response.aiter_text():
+            if recorder:
+                recorder.receive(text)
+            buffer += text
+            lines = re.split(r"\r\n|\r|\n", buffer)
+            buffer = lines.pop()
+            for line in lines:
+                yield line
+        if buffer:
+            yield buffer
+
+    async def _parse(
+        self, response: httpx.Response, recorder: Recorder | None = None
+    ) -> AsyncGenerator[StreamEvent, None]:
         calls = _ToolCallBuffer()
         reason: FinishReason | None = None
         usage: Usage | None = None
-        async for line in response.aiter_lines():
+        content = ""
+        async for line in self._lines(response, recorder):
             if not line.startswith("data:"):
                 continue
             payload = line[5:].strip()
@@ -192,6 +243,8 @@ class OpenAIChatProvider:
                 break
             try:
                 chunk = json.loads(payload)
+                if not isinstance(chunk, dict) or "error" in chunk:
+                    raise ValueError("Invalid stream payload")
             except ValueError:
                 raise ProviderError(
                     "other", "模型服务返回了无法解析的流数据", retryable=False
@@ -201,23 +254,38 @@ class OpenAIChatProvider:
                     input_tokens=int(chunk["usage"].get("prompt_tokens") or 0),
                     output_tokens=int(chunk["usage"].get("completion_tokens") or 0),
                 )
+            if recorder and chunk.get("usage"):
+                recorder.record["response"]["usage"] = chunk["usage"]
+                recorder.save()
             choices = chunk.get("choices") or []
             if not choices:
                 continue
             choice = choices[0]
             delta = choice.get("delta") or {}
-            if delta.get("content"):
-                yield TextDelta(delta["content"])
+            content += delta.get("content") or ""
             for fragment in delta.get("tool_calls") or []:
                 calls.add(fragment)
             if choice.get("finish_reason"):
                 reason = FINISH_REASONS.get(choice["finish_reason"], "other")
+            if recorder:
+                recorder.record["response"].update(
+                    content=content,
+                    tool_calls=[asdict(call) for call in calls.complete()],
+                    finish_reason=reason,
+                )
+                recorder.save()
+            if delta.get("content"):
+                yield TextDelta(delta["content"])
+        # Many compatible endpoints omit finish_reason; infer it from the content.
+        reason = reason or ("tool_calls" if calls else "stop")
+        if recorder:
+            recorder.record["response"]["finish_reason"] = reason
+            recorder.save()
         for call in calls.complete():
             yield call
         if usage is not None:
             yield usage
-        # Many compatible endpoints omit finish_reason; infer it from the content.
-        yield Finish(reason or ("tool_calls" if calls else "stop"))
+        yield Finish(reason)
 
 
 def from_settings(settings: Settings) -> OpenAIChatProvider:

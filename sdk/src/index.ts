@@ -7,6 +7,7 @@ export type Run = components['schemas']['Run'];
 export type Skill = components['schemas']['Skill'];
 export type AgentFile = components['schemas']['AgentFile'];
 export type Settings = components['schemas']['Settings'];
+export type ModelCall = components['schemas']['ModelCall'];
 export type AgentEvent = {
   id: string;
   sequence: number;
@@ -64,6 +65,8 @@ export class AgentClient {
       }),
   };
   runs = {
+    modelCalls: (id: string) =>
+      this.request<components['schemas']['ModelCalls']>(`/runs/${id}/model-calls`),
     context: (id: string) =>
       this.request<components['schemas']['ContextManifest']>(`/runs/${id}/context`),
     list: (cid?: string) =>

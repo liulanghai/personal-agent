@@ -26,6 +26,7 @@ class SettingsInput(BaseModel):
     api_key: str | None = Field(default=None, max_length=4000)
     timezone: str | None = Field(default=None, max_length=100)
     instruction_mode: Literal["auto", "codex", "claude"] | None = None
+    record_model_calls: bool | None = None
 
 
 # -- responses --------------------------------------------------------------
@@ -110,6 +111,30 @@ class Settings(BaseModel):
     timezone: str
     instruction_mode: Literal["auto", "codex", "claude"]
     workspace_path: str
+    record_model_calls: bool = False
+
+
+class ModelCall(BaseModel):
+    id: str
+    conversation_id: str
+    run_id: str
+    sequence: int
+    url: str
+    method: str
+    model: str
+    started_at: str
+    finished_at: str | None
+    duration_ms: int
+    http_status: int | None
+    status: Literal["running", "completed", "failed", "cancelled", "interrupted"]
+    request: dict[str, Any]
+    response: dict[str, Any]
+    raw_response: str
+    error: str | None
+
+
+class ModelCalls(BaseModel):
+    items: list[ModelCall]
 
 
 class Health(BaseModel):

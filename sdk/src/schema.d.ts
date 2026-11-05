@@ -92,6 +92,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{rid}/model-calls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Model Calls */
+        get: operations["model_calls_api_v1_runs__rid__model_calls_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{rid}/context": {
         parameters: {
             query?: never;
@@ -407,6 +424,53 @@ export interface components {
             /** Items */
             items: components["schemas"]["Message"][];
         };
+        /** ModelCall */
+        ModelCall: {
+            /** Id */
+            id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            /** Run Id */
+            run_id: string;
+            /** Sequence */
+            sequence: number;
+            /** Url */
+            url: string;
+            /** Method */
+            method: string;
+            /** Model */
+            model: string;
+            /** Started At */
+            started_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            /** Duration Ms */
+            duration_ms: number;
+            /** Http Status */
+            http_status: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed" | "cancelled" | "interrupted";
+            /** Request */
+            request: {
+                [key: string]: unknown;
+            };
+            /** Response */
+            response: {
+                [key: string]: unknown;
+            };
+            /** Raw Response */
+            raw_response: string;
+            /** Error */
+            error: string | null;
+        };
+        /** ModelCalls */
+        ModelCalls: {
+            /** Items */
+            items: components["schemas"]["ModelCall"][];
+        };
         /** RuleSource */
         RuleSource: {
             /** Scope */
@@ -460,6 +524,11 @@ export interface components {
             instruction_mode: "auto" | "codex" | "claude";
             /** Workspace Path */
             workspace_path: string;
+            /**
+             * Record Model Calls
+             * @default false
+             */
+            record_model_calls: boolean;
         };
         /** SettingsInput */
         SettingsInput: {
@@ -473,6 +542,8 @@ export interface components {
             timezone?: string | null;
             /** Instruction Mode */
             instruction_mode?: ("auto" | "codex" | "claude") | null;
+            /** Record Model Calls */
+            record_model_calls?: boolean | null;
         };
         /** Skill */
         Skill: {
@@ -746,6 +817,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Runs"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    model_calls_api_v1_runs__rid__model_calls_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelCalls"];
                 };
             };
             /** @description Validation Error */

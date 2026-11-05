@@ -17,6 +17,7 @@ def public_settings(config: Settings, workspace: str) -> dict[str, Any]:
         "instruction_mode": config["instruction_mode"],
         "has_api_key": bool(config.get("api_key")),
         "workspace_path": workspace,
+        "record_model_calls": config.get("record_model_calls", False),
     }
 
 
@@ -38,6 +39,7 @@ def build(services: Services) -> APIRouter:
                     "api_key": body.api_key,
                     "timezone": body.timezone,
                     "instruction_mode": body.instruction_mode,
+                    "record_model_calls": body.record_model_calls,
                 }
             )
         except SettingsError as exc:

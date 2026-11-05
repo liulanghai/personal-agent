@@ -37,6 +37,7 @@ class Runtime:
 
         Side-effecting tools are never replayed automatically.
         """
+        self.store.interrupt_model_calls()
         for run_id in self.store.list_active_run_ids():
             self.store.set_run_status(run_id, "failed", INTERRUPTED_ERROR)
             self.store.add_event(run_id, "run.failed", {"error": "服务重启，执行中断"})

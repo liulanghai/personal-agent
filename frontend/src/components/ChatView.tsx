@@ -48,8 +48,9 @@ export function ChatView(props: ChatViewProps) {
             latestRunId={run?.id}
             live={running ? live : null}
             process={
-              (steps.length > 0 || manifest) && (
+              run && (
                 <ExecutionDetails
+                  runId={run.id}
                   steps={steps}
                   manifest={manifest}
                   open={running}

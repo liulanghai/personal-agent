@@ -3,6 +3,7 @@ import Markdown from 'react-markdown';
 import type { AgentFile, Message } from '@personal-agent/sdk';
 import type { Turn } from '../lib/turns';
 import { ArtifactList } from './ArtifactList';
+import { ExecutionDetails } from './ExecutionDetails';
 
 function MessageItem({ message }: { message: Message }) {
   const mine = message.role === 'user';
@@ -70,7 +71,17 @@ export function MessageList(props: MessageListProps) {
             {turn.prompts.map((m) => (
               <MessageItem key={m.id} message={m} />
             ))}
-            {latest && props.process}
+            {latest ? (
+              props.process
+            ) : (
+              <ExecutionDetails
+                runId={turn.runId}
+                steps={undefined}
+                manifest={undefined}
+                open={false}
+                statusLabel="历史执行"
+              />
+            )}
             {turn.replies.map((m) => (
               <MessageItem key={m.id} message={m} />
             ))}

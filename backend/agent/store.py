@@ -121,6 +121,13 @@ CREATE TABLE IF NOT EXISTS events(
     created_at TEXT
 );
 CREATE INDEX IF NOT EXISTS run_events ON events(run_id, sequence);
+CREATE TABLE IF NOT EXISTS model_calls(
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    UNIQUE(run_id, sequence)
+);
 CREATE TABLE IF NOT EXISTS files(
     id TEXT PRIMARY KEY,
     name TEXT,
@@ -300,6 +307,41 @@ class Store:
             (run_id, kind),
         )
         return None if row is None else json.loads(row["data"])
+
+    # -- dedicated model interaction records (never ordinary events/logs) -------
+
+    def create_model_call(self, run_id: str, data: dict[str, Any]) -> dict[str, Any]:
+        with self.connect() as db:
+            sequence = db.execute(
+                "SELECT COALESCE(MAX(sequence),0)+1 FROM model_calls WHERE run_id=?", (run_id,)
+            ).fetchone()[0]
+            record = {**data, "id": uid("model"), "run_id": run_id, "sequence": sequence}
+            db.execute(
+                "INSERT INTO model_calls VALUES (?,?,?,?)",
+                (record["id"], run_id, sequence, json.dumps(record, ensure_ascii=False)),
+            )
+        return record
+
+    def save_model_call(self, record: dict[str, Any]) -> None:
+        self.execute(
+            "UPDATE model_calls SET data=? WHERE id=?",
+            (json.dumps(record, ensure_ascii=False), record["id"]),
+        )
+
+    def list_model_calls(self, run_id: str) -> list[dict[str, Any]]:
+        return [
+            json.loads(row["data"])
+            for row in self._rows(
+                "SELECT data FROM model_calls WHERE run_id=? ORDER BY sequence", (run_id,)
+            )
+        ]
+
+    def interrupt_model_calls(self) -> None:
+        for row in self._rows("SELECT data FROM model_calls"):
+            record = json.loads(row["data"])
+            if record["status"] == "running":
+                record.update(status="interrupted", finished_at=now(), error="服务重启，调用中断")
+                self.save_model_call(record)
 
     # -- files ----------------------------------------------------------------
 

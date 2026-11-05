@@ -5,6 +5,7 @@
 **/node_modules/
 sdk/src/schema.d.ts
 docs/
+references/
 *.md
 *.json
 *.yml

@@ -22,6 +22,7 @@ from ..providers.base import (
     ToolCall,
     ToolSpec,
 )
+from ..providers.recording import recording_scope
 from ..store import FileRow, RunRow, Store, uid
 from ..tools.registry import DEFINITIONS, Tools
 
@@ -96,12 +97,19 @@ class AgentLoop:
         messages, manifest = self.context.build(config, dict(run), files, history)
         self.store.add_event(run["id"], "context.built", manifest)
         provider = self.provider_factory(config)
+        scope = (
+            (self.store, run["id"], run["conversation_id"])
+            if config.get("record_model_calls", False)
+            else None
+        )
+        token = recording_scope.set(scope)
         try:
             return await self._steps(provider, config["model"], run["id"], messages)
         except ProviderError as exc:
             # Provider messages are user-facing and never contain response bodies.
             raise ValueError(str(exc)) from exc
         finally:
+            recording_scope.reset(token)
             await provider.aclose()
 
     async def _steps(
